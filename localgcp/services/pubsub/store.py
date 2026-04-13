@@ -1,0 +1,115 @@
+"""Pub/Sub in-memory state.
+
+Beyond the NamespacedStore (for topics/subscriptions metadata), we need
+a per-subscription message queue with ack tracking.
+
+Structure:
+  topics        → topic_name → TopicModel dict
+  subscriptions → sub_name   → SubscriptionModel dict
+
+Message queues are kept in _queues: sub_name → deque of _Envelope.
+Unacked messages are in _unacked: sub_name → {ack_id: _Envelope}.
+"""
+from __future__ import annotations
+
+import threading
+import time
+import uuid
+from collections import deque
+from dataclasses import dataclass, field
+
+from localgcp.config import settings
+from localgcp.core.store import NamespacedStore
+
+_store = NamespacedStore("pubsub", settings.data_dir)
+
+
+@dataclass
+class _Envelope:
+    message: dict          # PubsubMessage dict
+    ack_deadline: float = 0.0   # epoch seconds when ack expires
+    delivery_attempt: int = 1
+
+
+_lock = threading.Lock()
+_queues: dict[str, deque[_Envelope]] = {}    # sub → pending messages
+_unacked: dict[str, dict[str, _Envelope]] = {}  # sub → ack_id → envelope
+
+
+def get_store() -> NamespacedStore:
+    return _store
+
+
+def ensure_queue(sub_name: str) -> None:
+    with _lock:
+        _queues.setdefault(sub_name, deque())
+        _unacked.setdefault(sub_name, {})
+
+
+def remove_queue(sub_name: str) -> None:
+    with _lock:
+        _queues.pop(sub_name, None)
+        _unacked.pop(sub_name, None)
+
+
+def enqueue(sub_name: str, message: dict) -> None:
+    """Add a message to a subscription's queue."""
+    with _lock:
+        q = _queues.get(sub_name)
+        if q is not None:
+            q.append(_Envelope(message=message))
+
+
+def pull(sub_name: str, max_messages: int) -> list[tuple[str, dict, int]]:
+    """Pull up to max_messages from the queue.
+
+    Returns list of (ack_id, message_dict, delivery_attempt).
+    Moves messages to unacked map with a deadline.
+    """
+    with _lock:
+        q = _queues.get(sub_name, deque())
+        unacked = _unacked.setdefault(sub_name, {})
+
+        # Re-enqueue expired unacked messages first
+        now = time.monotonic()
+        expired = [aid for aid, env in unacked.items() if env.ack_deadline < now]
+        for aid in expired:
+            env = unacked.pop(aid)
+            env.delivery_attempt += 1
+            q.appendleft(env)
+
+        results = []
+        sub_data = _store.get("subscriptions", sub_name)
+        deadline_secs = sub_data["ackDeadlineSeconds"] if sub_data else 10
+
+        for _ in range(min(max_messages, len(q))):
+            if not q:
+                break
+            env = q.popleft()
+            ack_id = str(uuid.uuid4())
+            env.ack_deadline = time.monotonic() + deadline_secs
+            unacked[ack_id] = env
+            results.append((ack_id, env.message, env.delivery_attempt))
+
+        return results
+
+
+def acknowledge(sub_name: str, ack_ids: list[str]) -> None:
+    with _lock:
+        unacked = _unacked.get(sub_name, {})
+        for aid in ack_ids:
+            unacked.pop(aid, None)
+
+
+def modify_ack_deadline(sub_name: str, ack_ids: list[str], deadline_secs: int) -> None:
+    with _lock:
+        unacked = _unacked.get(sub_name, {})
+        new_deadline = time.monotonic() + deadline_secs
+        for aid in ack_ids:
+            if aid in unacked:
+                unacked[aid].ack_deadline = new_deadline
+
+
+def queue_depth(sub_name: str) -> int:
+    with _lock:
+        return len(_queues.get(sub_name, []))
