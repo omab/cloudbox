@@ -15,11 +15,10 @@ services:
     environment:
       - LOCALGCP_PROJECT=local-project
       - LOCALGCP_LOCATION=us-central1
-      # Uncomment to persist data to a volume:
-      # - LOCALGCP_DATA_DIR=/data
-    # volumes:
-    #   - localgcp-data:/data
+      - LOCALGCP_DATA_DIR=/data
+    volumes:
+      - localgcp-data:/data
     restart: unless-stopped
 
-# volumes:
-#   localgcp-data:
+volumes:
+  localgcp-data:
