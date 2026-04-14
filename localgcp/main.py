@@ -25,6 +25,7 @@ _SERVICES = [
     ("firestore",     "Cloud Firestore",  lambda: settings.firestore_port),
     ("secretmanager", "Secret Manager",   lambda: settings.secretmanager_port),
     ("tasks",         "Cloud Tasks",      lambda: settings.tasks_port),
+    ("bigquery",      "BigQuery",         lambda: settings.bigquery_port),
     ("admin",         "Admin UI",         lambda: settings.admin_port),
 ]
 
@@ -35,6 +36,7 @@ def _build_configs() -> list[tuple[str, uvicorn.Config]]:
     from localgcp.services.firestore.app import app as firestore_app
     from localgcp.services.secretmanager.app import app as secretmanager_app
     from localgcp.services.tasks.app import app as tasks_app
+    from localgcp.services.bigquery.app import app as bigquery_app
     from localgcp.admin.app import app as admin_app
 
     apps = {
@@ -43,6 +45,7 @@ def _build_configs() -> list[tuple[str, uvicorn.Config]]:
         "firestore": firestore_app,
         "secretmanager": secretmanager_app,
         "tasks": tasks_app,
+        "bigquery": bigquery_app,
         "admin": admin_app,
     }
 

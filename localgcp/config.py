@@ -37,6 +37,9 @@ class Settings:
     tasks_port: int = field(
         default_factory=lambda: int(os.environ.get("LOCALGCP_TASKS_PORT", "8123"))
     )
+    bigquery_port: int = field(
+        default_factory=lambda: int(os.environ.get("LOCALGCP_BIGQUERY_PORT", "9050"))
+    )
     admin_port: int = field(
         default_factory=lambda: int(os.environ.get("LOCALGCP_ADMIN_PORT", "8888"))
     )

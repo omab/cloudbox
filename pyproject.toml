@@ -11,6 +11,7 @@ dependencies = [
     "httpx>=0.27",
     "python-multipart>=0.0.9",
     "grpcio>=1.60",
+    "duckdb>=1.5.2",
 ]
 
 [project.scripts]
@@ -26,6 +27,7 @@ dev = [
     "google-cloud-firestore>=2.16",
     "google-cloud-secret-manager>=2.20",
     "google-cloud-tasks>=2.16",
+    "google-cloud-bigquery>=3.41.0",
 ]
 
 [tool.pytest.ini_options]

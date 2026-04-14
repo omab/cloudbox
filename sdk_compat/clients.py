@@ -153,3 +153,24 @@ def tasks_client():
             api_endpoint=f"http://{_HOST}:{_TASKS_PORT}",
         )
     )
+
+
+_BQ_PORT = int(os.environ.get("LOCALGCP_BIGQUERY_PORT", "9050"))
+
+
+def bigquery_client():
+    """Return a BigQuery Client pointed at LocalGCP.
+
+    Uses AnonymousCredentials so no real GCP auth is required.
+    """
+    from google.cloud import bigquery
+    from google.auth.credentials import AnonymousCredentials
+    from google.api_core import client_options as options
+
+    return bigquery.Client(
+        project=_PROJECT,
+        credentials=AnonymousCredentials(),
+        client_options=options.ClientOptions(
+            api_endpoint=f"http://{_HOST}:{_BQ_PORT}",
+        ),
+    )
