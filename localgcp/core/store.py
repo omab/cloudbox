@@ -89,7 +89,9 @@ class NamespacedStore:
         if not self._data_dir:
             return
         path = self._data_dir / "data.json"
-        path.write_text(json.dumps(self._data, default=str), encoding="utf-8")
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self._data, default=str), encoding="utf-8")
+        tmp.replace(path)
 
     def _load(self) -> None:
         path = self._data_dir / "data.json"

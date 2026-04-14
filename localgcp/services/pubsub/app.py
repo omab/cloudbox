@@ -7,10 +7,12 @@ of catch-alls so FastAPI can route correctly.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, Response
+import httpx
+from fastapi import BackgroundTasks, FastAPI, Response
 from fastapi.responses import JSONResponse
 
 from localgcp.core.errors import GCPError, add_gcp_exception_handler
@@ -35,9 +37,31 @@ app = FastAPI(title="LocalGCP — Cloud Pub/Sub", version="v1")
 add_gcp_exception_handler(app)
 add_request_logging(app, "pubsub")
 
+logger = logging.getLogger("localgcp.pubsub")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+async def _dispatch_push(push_endpoint: str, sub_name: str, message: dict) -> None:
+    """POST a message to a push subscription's endpoint.
+
+    The payload matches the GCP Pub/Sub push message format:
+        {"message": {...}, "subscription": "projects/.../subscriptions/..."}
+
+    A 2xx response from the endpoint is treated as an acknowledgement.
+    Non-2xx responses and connection errors are logged as warnings; the
+    emulator does not retry (fire-and-forget semantics).
+    """
+    payload = {"message": message, "subscription": sub_name}
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(push_endpoint, json=payload, timeout=10.0)
+        if resp.status_code >= 300:
+            logger.warning("Push delivery to %s returned HTTP %d", push_endpoint, resp.status_code)
+    except Exception as exc:
+        logger.warning("Push delivery to %s failed: %s", push_endpoint, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +117,9 @@ async def delete_topic(project: str, topic_id: str):
 
 
 @app.post("/v1/projects/{project}/topics/{topic_id}:publish")
-async def publish(project: str, topic_id: str, body: PublishRequest):
+async def publish(
+    project: str, topic_id: str, body: PublishRequest, background_tasks: BackgroundTasks
+):
     full_name = f"projects/{project}/topics/{topic_id}"
     store = ps_store.get_store()
     if not store.exists("topics", full_name):
@@ -111,8 +137,13 @@ async def publish(project: str, topic_id: str, body: PublishRequest):
             "orderingKey": raw_msg.get("orderingKey", ""),
         }
         for sub in store.list("subscriptions"):
-            if sub.get("topic") == full_name:
-                sub_name = sub["name"]
+            if sub.get("topic") != full_name:
+                continue
+            sub_name = sub["name"]
+            push_endpoint = (sub.get("pushConfig") or {}).get("pushEndpoint", "")
+            if push_endpoint:
+                background_tasks.add_task(_dispatch_push, push_endpoint, sub_name, msg)
+            else:
                 ps_store.ensure_queue(sub_name)
                 ps_store.enqueue(sub_name, msg)
 
@@ -176,8 +207,13 @@ async def delete_subscription(project: str, sub_id: str):
 async def pull_messages(project: str, sub_id: str, body: PullRequest):
     full_name = f"projects/{project}/subscriptions/{sub_id}"
     store = ps_store.get_store()
-    if not store.exists("subscriptions", full_name):
+    sub_data = store.get("subscriptions", full_name)
+    if sub_data is None:
         raise GCPError(404, f"Subscription not found: {full_name}")
+
+    push_endpoint = (sub_data.get("pushConfig") or {}).get("pushEndpoint", "")
+    if push_endpoint:
+        raise GCPError(400, f"Subscription {full_name} is a push subscription and cannot be pulled from directly")
 
     ps_store.ensure_queue(full_name)
     results = ps_store.pull(full_name, body.maxMessages)
