@@ -383,6 +383,15 @@ function _pgBar(total, pgSt, changeFn, sizeFn) {
 }
 
 // Per-service list state
+const _gcs = {
+  buckets: [],
+  bSort: { f: 'name', d: 1 },
+  bucket: null,
+  objects: [],
+  oSort: { f: 'name', d: 1 },
+  page: 0,
+  pageSize: 50,
+};
 const _ps = { topics: [], tSort: {f:'name',d:1}, tPg: {page:0,size:50},
               subs:   [], sSort: {f:'name',d:1}, sPg: {page:0,size:50} };
 const _fs = { cols: [], cSort: {f:'name',d:1},
@@ -518,16 +527,6 @@ async function resetAll() {
 }
 
 // ── GCS ──────────────────────────────────────────────────────────────────────
-
-const _gcs = {
-  buckets: [],
-  bSort: { f: 'name', d: 1 },
-  bucket: null,
-  objects: [],
-  oSort: { f: 'name', d: 1 },
-  page: 0,
-  pageSize: 50,
-};
 
 function _gcsCmp(a, b, field, dir) {
   let av = a[field], bv = b[field];
