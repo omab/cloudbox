@@ -73,10 +73,15 @@ def pull(sub_name: str, max_messages: int) -> list[tuple[str, dict, int]]:
         # Re-enqueue expired unacked messages first
         now = time.monotonic()
         expired = [aid for aid, env in unacked.items() if env.ack_deadline < now]
+        sub_data = _store.get("subscriptions", sub_name)
+        dlp = (sub_data or {}).get("deadLetterPolicy")
         for aid in expired:
             env = unacked.pop(aid)
             env.delivery_attempt += 1
-            q.appendleft(env)
+            if dlp and dlp.get("deadLetterTopic") and env.delivery_attempt > dlp.get("maxDeliveryAttempts", 5):
+                _route_to_dlq(dlp["deadLetterTopic"], env.message)
+            else:
+                q.appendleft(env)
 
         results = []
         sub_data = _store.get("subscriptions", sub_name)
@@ -113,3 +118,12 @@ def modify_ack_deadline(sub_name: str, ack_ids: list[str], deadline_secs: int) -
 def queue_depth(sub_name: str) -> int:
     with _lock:
         return len(_queues.get(sub_name, []))
+
+
+def _route_to_dlq(dlq_topic: str, message: dict) -> None:
+    """Enqueue a message to all subscriptions of a dead-letter topic (called under _lock)."""
+    for sub in _store.list("subscriptions"):
+        if sub.get("topic") == dlq_topic:
+            q = _queues.get(sub["name"])
+            if q is not None:
+                q.append(_Envelope(message=message))

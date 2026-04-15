@@ -16,6 +16,11 @@ class PushConfig(BaseModel):
     attributes: dict[str, str] = Field(default_factory=dict)
 
 
+class DeadLetterPolicy(BaseModel):
+    deadLetterTopic: str = ""
+    maxDeliveryAttempts: int = 5
+
+
 class SubscriptionModel(BaseModel):
     name: str
     topic: str
@@ -25,6 +30,7 @@ class SubscriptionModel(BaseModel):
     messageRetentionDuration: str = "604800s"
     labels: dict[str, str] = Field(default_factory=dict)
     enableMessageOrdering: bool = False
+    deadLetterPolicy: DeadLetterPolicy | None = None
 
 
 class PubsubMessage(BaseModel):

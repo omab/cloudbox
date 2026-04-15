@@ -205,6 +205,48 @@ async def test_push_dispatch_requeues_message_on_failure():
     assert results[0][2] == 2  # delivery_attempt incremented
 
 
+def test_dead_letter_policy_routes_after_max_attempts(pubsub_client):
+    """Messages exceeding maxDeliveryAttempts are routed to the dead-letter topic."""
+    topic = f"{PROJECT}/topics/main-topic"
+    dlq_topic = f"{PROJECT}/topics/dlq-topic"
+    sub = f"{PROJECT}/subscriptions/main-sub"
+    dlq_sub = f"{PROJECT}/subscriptions/dlq-sub"
+
+    pubsub_client.put(f"/v1/{topic}")
+    pubsub_client.put(f"/v1/{dlq_topic}")
+    pubsub_client.put(f"/v1/{dlq_sub}", json={"name": dlq_sub, "topic": dlq_topic})
+    pubsub_client.put(f"/v1/{sub}", json={
+        "name": sub, "topic": topic,
+        "deadLetterPolicy": {"deadLetterTopic": dlq_topic, "maxDeliveryAttempts": 2},
+    })
+
+    data = base64.b64encode(b"die hard").decode()
+    pubsub_client.post(f"/v1/{topic}:publish", json={"messages": [{"data": data}]})
+
+    from localgcp.services.pubsub import store as ps_store
+    import time
+
+    # Simulate exceeding maxDeliveryAttempts by force-expiring ack deadlines
+    for attempt in range(1, 3):  # attempts 1, 2 → on attempt 3 it should DLQ
+        r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
+        msgs = r.json()["receivedMessages"]
+        assert len(msgs) == 1, f"Expected message on attempt {attempt}"
+        ack_id = msgs[0]["ackId"]
+        # Expire the ack deadline immediately
+        ps_store.modify_ack_deadline(sub, [ack_id], 0)
+
+    # Force the expired message through the re-enqueue + DLQ check by pulling again
+    # At delivery_attempt=3 > maxDeliveryAttempts=2, should route to DLQ
+    r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
+    assert r.json()["receivedMessages"] == []  # no longer in main sub
+
+    # DLQ sub should have the message
+    r = pubsub_client.post(f"/v1/{dlq_sub}:pull", json={"maxMessages": 1})
+    dlq_msgs = r.json()["receivedMessages"]
+    assert len(dlq_msgs) == 1
+    assert dlq_msgs[0]["message"]["data"] == data
+
+
 def test_delete_topic_removes_subscriptions(pubsub_client):
     topic = f"{PROJECT}/topics/del-topic"
     sub = f"{PROJECT}/subscriptions/del-sub"
