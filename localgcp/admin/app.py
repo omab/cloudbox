@@ -330,6 +330,70 @@ function stateClass(s) {
   return 's-' + (m[String(s).toUpperCase()] || 'disabled');
 }
 
+// ── Sort / Pagination helpers ────────────────────────────────────────────────
+// Render a sortable <th>. clickFn is a global function name; field is passed as arg.
+function _sth(label, field, state, clickFn, extra = '') {
+  const active = state.f === field;
+  const cls = active ? ` sort-${state.d === 1 ? 'asc' : 'desc'}` : '';
+  const icon = `<span class="sort-icon">${active ? (state.d === 1 ? '▲' : '▼') : '⇅'}</span>`;
+  return `<th class="sortable${cls}"${extra} onclick="${clickFn}('${field}')">${label} ${icon}</th>`;
+}
+// Sort items by state.f/d; numFields lists fields that should sort numerically.
+function _srt(items, state, numFields = []) {
+  return [...items].sort((a, b) => {
+    let av = a[state.f], bv = b[state.f];
+    if (numFields.includes(state.f)) return ((parseFloat(av) || 0) - (parseFloat(bv) || 0)) * state.d;
+    av = String(av ?? '').toLowerCase(); bv = String(bv ?? '').toLowerCase();
+    return (av < bv ? -1 : av > bv ? 1 : 0) * state.d;
+  });
+}
+// Paginate items; mutates pgSt.page to clamp it; returns { slice, total, start, ps, maxPg }.
+function _pg(items, pgSt) {
+  const total = items.length;
+  const ps = pgSt.size === 'all' ? Math.max(1, total) : pgSt.size;
+  const maxPg = Math.max(0, Math.ceil(total / ps) - 1);
+  pgSt.page = Math.min(pgSt.page, maxPg);
+  const start = pgSt.page * ps;
+  return { slice: items.slice(start, start + ps), total, start, ps, maxPg };
+}
+// Advance page by delta, clamped to [0, maxPg].
+function _pgChg(pgSt, total, delta) {
+  const ps = pgSt.size === 'all' ? Math.max(1, total) : pgSt.size;
+  pgSt.page = Math.max(0, Math.min(pgSt.page + delta, Math.max(0, Math.ceil(total / ps) - 1)));
+}
+// Render pagination bar; only shown when total > 25.
+function _pgBar(total, pgSt, changeFn, sizeFn) {
+  if (total <= 25) return '';
+  const ps = pgSt.size === 'all' ? Math.max(1, total) : pgSt.size;
+  const maxPg = Math.max(0, Math.ceil(total / ps) - 1);
+  const start = pgSt.page * ps;
+  const from = total === 0 ? 0 : start + 1;
+  const to = Math.min(start + ps, total);
+  const opts = [25, 50, 100, 'all'].map(v => {
+    const val = v === 'all' ? 'all' : v;
+    const cur = pgSt.size === val;
+    return `<option value="${val}"${cur ? ' selected' : ''}>${v === 'all' ? 'All' : v} / page</option>`;
+  }).join('');
+  return `<div class="pagination">
+    <span class="page-info">${from}–${to} of ${total}</span>
+    <button class="btn btn-ghost" onclick="${changeFn}(-1)"${pgSt.page <= 0 ? ' disabled' : ''}>‹ Prev</button>
+    <button class="btn btn-ghost" onclick="${changeFn}(1)"${pgSt.page >= maxPg ? ' disabled' : ''}>Next ›</button>
+    <select onchange="${sizeFn}(this.value)">${opts}</select>
+  </div>`;
+}
+
+// Per-service list state
+const _ps = { topics: [], tSort: {f:'name',d:1}, tPg: {page:0,size:50},
+              subs:   [], sSort: {f:'name',d:1}, sPg: {page:0,size:50} };
+const _fs = { cols: [], cSort: {f:'name',d:1},
+              col: null, docs: [], dSort: {f:'name',d:1}, dPg: {page:0,size:50} };
+const _sm = { secrets: [], sort: {f:'name',d:1}, pg: {page:0,size:50} };
+const _tk = { queues: [], qSort: {f:'name',d:1},
+              queue: null, tasks: [], tSort: {f:'name',d:1}, tPg: {page:0,size:50} };
+const _bq = { datasets: [], dsSort: {f:'datasetId',d:1},
+              dataset: null, tables: [], tbSort: {f:'tableId',d:1} };
+const _sc = { jobs: [], sort: {f:'id',d:1}, pg: {page:0,size:50} };
+
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
   if (!r.ok) {
@@ -643,57 +707,87 @@ async function deleteGCSObject(bucket, name) {
 async function loadPubSub() {
   $('pubsub-content').innerHTML = '<div class="loading">Loading&hellip;</div>';
   try {
-    const [topics, subs] = await Promise.all([
+    [_ps.topics, _ps.subs] = await Promise.all([
       api('/api/pubsub/topics'),
       api('/api/pubsub/subscriptions'),
     ]);
-    renderPubSub(topics, subs);
+    $('pubsub-content').innerHTML = '<div id="ps-topics"></div><div id="ps-subs"></div>';
+    renderPsTopics(); renderPsSubs();
   } catch (e) {
     $('pubsub-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
   }
 }
 
-function renderPubSub(topics, subs) {
-  let topicRows = '';
-  for (const t of topics) {
-    const n = JSON.stringify(t.name);
-    topicRows += `<tr>
+async function _reloadPs() {
+  [_ps.topics, _ps.subs] = await Promise.all([
+    api('/api/pubsub/topics'), api('/api/pubsub/subscriptions'),
+  ]);
+  renderPsTopics(); renderPsSubs();
+}
+
+function sortPsTopic(f) { _ps.tSort = _ps.tSort.f===f ? {f,d:_ps.tSort.d*-1} : {f,d:1}; _ps.tPg.page=0; renderPsTopics(); }
+function pgPsTopic(d)   { _pgChg(_ps.tPg, _ps.topics.length, d); renderPsTopics(); }
+function szPsTopic(v)   { _ps.tPg.size=v==='all'?'all':+v; _ps.tPg.page=0; renderPsTopics(); }
+
+function renderPsTopics() {
+  const sorted = _srt(_ps.topics, _ps.tSort, ['subscriptionCount']);
+  const {slice, total} = _pg(sorted, _ps.tPg);
+  const sth = (l,f) => _sth(l, f, _ps.tSort, 'sortPsTopic');
+  let rows = '';
+  for (const t of slice) {
+    const tn = JSON.stringify(t.name);
+    rows += `<tr>
       <td class="mono">${esc(shortName(t.name))}</td>
       <td><span class="cnt">${t.subscriptionCount}</span></td>
       <td class="dim">${esc(t.name)}</td>
       <td class="actions">
-        <button class="btn btn-secondary" onclick="openPublishModal(${n})">Publish</button>
-        <button class="btn btn-danger"    onclick="deletePubSubTopic(${n})">Delete</button>
+        <button class="btn btn-secondary" onclick="openPublishModal(${tn})">Publish</button>
+        <button class="btn btn-danger"    onclick="deletePubSubTopic(${tn})">Delete</button>
       </td>
     </tr>`;
   }
-  let subRows = '';
-  for (const s of subs) {
-    const n = JSON.stringify(s.name);
-    subRows += `<tr>
+  $('ps-topics').innerHTML = `
+    <div class="card">
+      <div class="card-header"><h2>Topics</h2><span class="cnt">${total}</span></div>
+      <table>
+        <thead><tr>${sth('Name','name')}${sth('Subscriptions','subscriptionCount')}<th>Full Name</th><th>Actions</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" class="empty">No topics</td></tr>'}</tbody>
+      </table>
+      ${_pgBar(total, _ps.tPg, 'pgPsTopic', 'szPsTopic')}
+    </div>`;
+}
+
+function sortPsSub(f) { _ps.sSort = _ps.sSort.f===f ? {f,d:_ps.sSort.d*-1} : {f,d:1}; _ps.sPg.page=0; renderPsSubs(); }
+function pgPsSub(d)   { _pgChg(_ps.sPg, _ps.subs.length, d); renderPsSubs(); }
+function szPsSub(v)   { _ps.sPg.size=v==='all'?'all':+v; _ps.sPg.page=0; renderPsSubs(); }
+
+function renderPsSubs() {
+  const sorted = _srt(_ps.subs, _ps.sSort, ['queueDepth','ackDeadlineSeconds']);
+  const {slice, total} = _pg(sorted, _ps.sPg);
+  const sth = (l,f) => _sth(l, f, _ps.sSort, 'sortPsSub');
+  let rows = '';
+  for (const s of slice) {
+    const sn = JSON.stringify(s.name);
+    rows += `<tr>
       <td class="mono">${esc(shortName(s.name))}</td>
       <td class="dim mono">${esc(shortName(s.topic))}</td>
       <td><span class="cnt">${s.queueDepth}</span></td>
       <td class="dim">${s.ackDeadlineSeconds}s</td>
-      <td class="actions">
-        <button class="btn btn-danger" onclick="deletePubSubSub(${n})">Delete</button>
-      </td>
+      <td class="actions"><button class="btn btn-danger" onclick="deletePubSubSub(${sn})">Delete</button></td>
     </tr>`;
   }
-  $('pubsub-content').innerHTML = `
+  $('ps-subs').innerHTML = `
     <div class="card">
-      <div class="card-header"><h2>Topics</h2><span class="cnt">${topics.length}</span></div>
+      <div class="card-header"><h2>Subscriptions</h2><span class="cnt">${total}</span></div>
       <table>
-        <thead><tr><th>Name</th><th>Subscriptions</th><th>Full Name</th><th>Actions</th></tr></thead>
-        <tbody>${topicRows || '<tr><td colspan="4" class="empty">No topics</td></tr>'}</tbody>
+        <thead><tr>
+          ${sth('Name','name')}${sth('Topic','topic')}
+          ${sth('Queue Depth','queueDepth')}${sth('Ack Deadline','ackDeadlineSeconds')}
+          <th>Actions</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="5" class="empty">No subscriptions</td></tr>'}</tbody>
       </table>
-    </div>
-    <div class="card">
-      <div class="card-header"><h2>Subscriptions</h2><span class="cnt">${subs.length}</span></div>
-      <table>
-        <thead><tr><th>Name</th><th>Topic</th><th>Queue Depth</th><th>Ack Deadline</th><th>Actions</th></tr></thead>
-        <tbody>${subRows || '<tr><td colspan="5" class="empty">No subscriptions</td></tr>'}</tbody>
-      </table>
+      ${_pgBar(total, _ps.sPg, 'pgPsSub', 'szPsSub')}
     </div>`;
 }
 
@@ -721,8 +815,7 @@ async function doPublish() {
     });
     closeOverlay('publish-overlay');
     alert(`Published!\nMessage ID: ${res.messageId}\nDelivered to ${res.deliveredToSubscriptions} subscription(s)`);
-    loaded.pubsub = false;
-    loadPubSub();
+    await _reloadPs();
   } catch (e) { alert('Publish failed: ' + e.message); }
 }
 
@@ -730,8 +823,7 @@ async function deletePubSubTopic(name) {
   if (!confirm(`Delete topic "${shortName(name)}" and its subscriptions?`)) return;
   try {
     await api('/api/pubsub/topics?' + new URLSearchParams({ topic: name }), { method: 'DELETE' });
-    loaded.pubsub = false;
-    loadPubSub();
+    await _reloadPs();
   } catch (e) { alert('Delete failed: ' + e.message); }
 }
 
@@ -739,108 +831,117 @@ async function deletePubSubSub(name) {
   if (!confirm(`Delete subscription "${shortName(name)}"?`)) return;
   try {
     await api('/api/pubsub/subscriptions?' + new URLSearchParams({ subscription: name }), { method: 'DELETE' });
-    loaded.pubsub = false;
-    loadPubSub();
+    await _reloadPs();
   } catch (e) { alert('Delete failed: ' + e.message); }
 }
 
 // ── Firestore ─────────────────────────────────────────────────────────────────
 async function loadFirestore() {
+  _fs.col = null;
   $('firestore-nav').style.display = 'none';
   $('firestore-content').innerHTML = '<div class="loading">Loading collections&hellip;</div>';
   try {
-    const cols = await api('/api/firestore/collections');
-    renderFirestoreCollections(cols);
+    _fs.cols = await api('/api/firestore/collections');
+    renderFirestoreCollections();
   } catch (e) {
     $('firestore-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
   }
 }
 
-function renderFirestoreCollections(cols) {
+function sortFsCol(f) { _fs.cSort = _fs.cSort.f===f ? {f,d:_fs.cSort.d*-1} : {f,d:1}; renderFirestoreCollections(); }
+
+function renderFirestoreCollections() {
   $('firestore-nav').style.display = 'none';
+  const sorted = _srt(_fs.cols, _fs.cSort, ['documentCount']);
+  const sth = (l,f) => _sth(l, f, _fs.cSort, 'sortFsCol');
   let rows = '';
-  for (const c of cols) {
-    const n = JSON.stringify(c.name);
+  for (const c of sorted) {
+    const cn = JSON.stringify(c.name);
     rows += `<tr>
-      <td><button class="btn-link" onclick="loadFirestoreDocs(${n})">${esc(c.name)}</button></td>
+      <td><button class="btn-link" onclick="loadFirestoreDocs(${cn})">${esc(c.name)}</button></td>
       <td><span class="cnt">${c.documentCount}</span></td>
     </tr>`;
   }
   $('firestore-content').innerHTML = `
     <div class="card">
-      <div class="card-header"><h2>Collections</h2><span class="cnt">${cols.length}</span></div>
+      <div class="card-header"><h2>Collections</h2><span class="cnt">${sorted.length}</span></div>
       <table>
-        <thead><tr><th>Collection</th><th>Documents</th></tr></thead>
+        <thead><tr>${sth('Collection','name')}${sth('Documents','documentCount')}</tr></thead>
         <tbody>${rows || '<tr><td colspan="2" class="empty">No documents stored</td></tr>'}</tbody>
       </table>
     </div>`;
 }
 
 async function loadFirestoreDocs(collection) {
+  _fs.col = collection;
+  _fs.dPg.page = 0;
+  _fs.dSort = {f:'name', d:1};
   $('firestore-nav').style.display = 'flex';
   $('firestore-nav').innerHTML = `<a onclick="loadFirestore()">Collections</a> <span>&#8250;</span> ${esc(collection)}`;
   $('firestore-content').innerHTML = '<div class="loading">Loading documents&hellip;</div>';
   try {
-    const docs = await api('/api/firestore/documents?' + new URLSearchParams({ collection }));
-    renderFirestoreDocs(collection, docs);
+    _fs.docs = (await api('/api/firestore/documents?' + new URLSearchParams({ collection })))
+      .map(d => ({...d, _id: shortName(d.name||''), _fields: Object.keys(d.fields||{}).length}));
+    renderFirestoreDocs();
   } catch (e) {
     $('firestore-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
   }
 }
 
-function renderFirestoreDocs(collection, docs) {
+function sortFsDoc(f) { _fs.dSort = _fs.dSort.f===f ? {f,d:_fs.dSort.d*-1} : {f,d:1}; _fs.dPg.page=0; renderFirestoreDocs(); }
+function pgFsDoc(d)   { _pgChg(_fs.dPg, _fs.docs.length, d); renderFirestoreDocs(); }
+function szFsDoc(v)   { _fs.dPg.size=v==='all'?'all':+v; _fs.dPg.page=0; renderFirestoreDocs(); }
+
+function renderFirestoreDocs() {
+  const collection = _fs.col;
+  const sorted = _srt(_fs.docs, _fs.dSort, ['_fields']);
+  const {slice, total} = _pg(sorted, _fs.dPg);
+  const sth = (l,f) => _sth(l, f, _fs.dSort, 'sortFsDoc');
+  const cn = JSON.stringify(collection);
   let rows = '';
-  for (let i = 0; i < docs.length; i++) {
-    const doc = docs[i];
-    const docName = doc.name || '';
-    const docId = shortName(docName);
-    const fieldCount = Object.keys(doc.fields || {}).length;
-    const n = JSON.stringify(docName);
-    const c = JSON.stringify(collection);
+  for (let i = 0; i < slice.length; i++) {
+    const doc = slice[i];
+    const dn = JSON.stringify(doc.name || '');
     const fieldsJson = JSON.stringify(doc.fields || {}, null, 2);
     rows += `<tr id="dr-${i}">
-      <td class="mono">${esc(docId)}</td>
-      <td><span class="cnt">${fieldCount}</span></td>
+      <td class="mono">${esc(doc._id)}</td>
+      <td><span class="cnt">${doc._fields}</span></td>
       <td class="dim">${doc.updateTime ? doc.updateTime.substring(0, 19).replace('T', ' ') : '&mdash;'}</td>
       <td class="actions">
         <button class="btn btn-ghost" id="view-btn-${i}" onclick="toggleDocView(${i}, ${JSON.stringify(fieldsJson)})">View</button>
-        <button class="btn btn-danger" onclick="deleteFirestoreDoc(${n}, ${c})">Delete</button>
+        <button class="btn btn-danger" onclick="deleteFirestoreDoc(${dn}, ${cn})">Delete</button>
       </td>
     </tr>
     <tr id="dv-${i}" style="display:none">
-      <td colspan="4" style="padding:.5rem 1rem .75rem">
-        <div class="pre" id="df-${i}"></div>
-      </td>
+      <td colspan="4" style="padding:.5rem 1rem .75rem"><div class="pre" id="df-${i}"></div></td>
     </tr>`;
   }
   $('firestore-content').innerHTML = `
     <div class="card">
-      <div class="card-header"><h2>${esc(collection)}</h2><span class="cnt">${docs.length} documents</span></div>
+      <div class="card-header"><h2>${esc(collection)}</h2><span class="cnt">${total} document${total!==1?'s':''}</span></div>
       <table>
-        <thead><tr><th>Document ID</th><th>Fields</th><th>Updated</th><th>Actions</th></tr></thead>
+        <thead><tr>${sth('Document ID','_id')}${sth('Fields','_fields')}${sth('Updated','updateTime')}<th>Actions</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="4" class="empty">No documents</td></tr>'}</tbody>
       </table>
+      ${_pgBar(total, _fs.dPg, 'pgFsDoc', 'szFsDoc')}
     </div>`;
 }
 
 function toggleDocView(i, fieldsJson) {
-  const viewRow = $('dv-' + i);
-  const btn = $('view-btn-' + i);
+  const viewRow = $('dv-' + i), btn = $('view-btn-' + i);
   if (viewRow.style.display === 'none') {
     $('df-' + i).textContent = fieldsJson;
-    viewRow.style.display = '';
-    btn.textContent = 'Hide';
-  } else {
-    viewRow.style.display = 'none';
-    btn.textContent = 'View';
-  }
+    viewRow.style.display = ''; btn.textContent = 'Hide';
+  } else { viewRow.style.display = 'none'; btn.textContent = 'View'; }
 }
 
 async function deleteFirestoreDoc(docPath, collection) {
   if (!confirm(`Delete document "${shortName(docPath)}"?`)) return;
   try {
     await api('/api/firestore/documents?' + new URLSearchParams({ path: docPath }), { method: 'DELETE' });
-    loadFirestoreDocs(collection);
+    _fs.docs = (await api('/api/firestore/documents?' + new URLSearchParams({ collection })))
+      .map(d => ({...d, _id: shortName(d.name||''), _fields: Object.keys(d.fields||{}).length}));
+    renderFirestoreDocs();
   } catch (e) { alert('Delete failed: ' + e.message); }
 }
 
@@ -848,26 +949,33 @@ async function deleteFirestoreDoc(docPath, collection) {
 async function loadSecrets() {
   $('secrets-content').innerHTML = '<div class="loading">Loading secrets&hellip;</div>';
   try {
-    const secrets = await api('/api/secretmanager/secrets');
-    renderSecrets(secrets);
+    _sm.secrets = await api('/api/secretmanager/secrets');
+    renderSecrets();
   } catch (e) {
     $('secrets-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
   }
 }
 
-function renderSecrets(secrets) {
+function sortSm(f) { _sm.sort = _sm.sort.f===f ? {f,d:_sm.sort.d*-1} : {f,d:1}; _sm.pg.page=0; renderSecrets(); }
+function pgSm(d)   { _pgChg(_sm.pg, _sm.secrets.length, d); renderSecrets(); }
+function szSm(v)   { _sm.pg.size=v==='all'?'all':+v; _sm.pg.page=0; renderSecrets(); }
+
+function renderSecrets() {
+  const sorted = _srt(_sm.secrets, _sm.sort, ['versionCount']);
+  const {slice, total} = _pg(sorted, _sm.pg);
+  const sth = (l,f) => _sth(l, f, _sm.sort, 'sortSm');
   let rows = '';
-  for (let i = 0; i < secrets.length; i++) {
-    const s = secrets[i];
+  for (let i = 0; i < slice.length; i++) {
+    const s = slice[i];
     const short = shortName(s.name);
-    const n = JSON.stringify(short);
+    const sn = JSON.stringify(short);
     rows += `<tr id="sr-${i}">
       <td class="mono">${esc(short)}</td>
       <td><span class="cnt">${s.versionCount}</span></td>
       <td class="dim">${s.createTime ? s.createTime.substring(0, 10) : '&mdash;'}</td>
       <td class="actions">
-        <button class="btn btn-ghost" id="sv-btn-${i}" onclick="toggleSecretVersions(${i}, ${n})">Versions</button>
-        <button class="btn btn-danger" onclick="deleteSecret(${n})">Delete</button>
+        <button class="btn btn-ghost" id="sv-btn-${i}" onclick="toggleSecretVersions(${i}, ${sn})">Versions</button>
+        <button class="btn btn-danger" onclick="deleteSecret(${sn})">Delete</button>
       </td>
     </tr>
     <tr id="sv-${i}" style="display:none">
@@ -878,42 +986,35 @@ function renderSecrets(secrets) {
   }
   $('secrets-content').innerHTML = `
     <div class="card">
-      <div class="card-header"><h2>Secrets</h2><span class="cnt">${secrets.length}</span></div>
+      <div class="card-header"><h2>Secrets</h2><span class="cnt">${total}</span></div>
       <table>
-        <thead><tr><th>Name</th><th>Versions</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr>${sth('Name','name')}${sth('Versions','versionCount')}${sth('Created','createTime')}<th>Actions</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="4" class="empty">No secrets</td></tr>'}</tbody>
       </table>
+      ${_pgBar(total, _sm.pg, 'pgSm', 'szSm')}
     </div>`;
 }
 
 async function toggleSecretVersions(i, secretName) {
-  const row = $('sv-' + i);
-  const btn = $('sv-btn-' + i);
+  const row = $('sv-' + i), btn = $('sv-btn-' + i);
   if (row.style.display === 'none') {
-    row.style.display = '';
-    btn.textContent = 'Hide';
+    row.style.display = ''; btn.textContent = 'Hide';
     const container = $('sv-content-' + i);
     try {
       const versions = await api('/api/secretmanager/versions?' + new URLSearchParams({ secret: secretName }));
-      if (!versions.length) {
-        container.innerHTML = '<div class="empty" style="padding:.5rem">No versions</div>';
-        return;
-      }
+      if (!versions.length) { container.innerHTML = '<div class="empty" style="padding:.5rem">No versions</div>'; return; }
       let vRows = '';
       for (let j = 0; j < versions.length; j++) {
         const v = versions[j];
         const vNum = v.name.split('/versions/').pop();
-        const sn = JSON.stringify(secretName);
-        const vn = JSON.stringify(vNum);
+        const sn = JSON.stringify(secretName), vn = JSON.stringify(vNum);
         vRows += `<tr>
           <td class="mono">v${esc(vNum)}</td>
           <td><span class="state ${stateClass(v.state)}">${v.state}</span></td>
           <td class="dim">${v.createTime ? v.createTime.substring(0, 19).replace('T', ' ') : '&mdash;'}</td>
-          <td class="actions">
-            ${v.state === 'ENABLED'
-              ? `<button class="btn btn-ghost" id="val-btn-${i}-${j}" onclick="toggleSecretValue(${i}, ${j}, ${sn}, ${vn})">Reveal</button>`
-              : ''}
-          </td>
+          <td class="actions">${v.state === 'ENABLED'
+            ? `<button class="btn btn-ghost" id="val-btn-${i}-${j}" onclick="toggleSecretValue(${i}, ${j}, ${sn}, ${vn})">Reveal</button>`
+            : ''}</td>
         </tr>
         <tr id="val-row-${i}-${j}" style="display:none">
           <td colspan="4" class="secret-val"><div class="pre" id="val-pre-${i}-${j}"></div></td>
@@ -921,66 +1022,58 @@ async function toggleSecretVersions(i, secretName) {
       }
       container.innerHTML = `<table class="sub-table">
         <thead><tr><th>Version</th><th>State</th><th>Created</th><th>Actions</th></tr></thead>
-        <tbody>${vRows}</tbody>
-      </table>`;
-    } catch (e) {
-      container.innerHTML = `<div class="empty" style="padding:.5rem">Error: ${esc(e.message)}</div>`;
-    }
-  } else {
-    row.style.display = 'none';
-    btn.textContent = 'Versions';
-  }
+        <tbody>${vRows}</tbody></table>`;
+    } catch (e) { container.innerHTML = `<div class="empty" style="padding:.5rem">Error: ${esc(e.message)}</div>`; }
+  } else { row.style.display = 'none'; btn.textContent = 'Versions'; }
 }
 
 async function toggleSecretValue(i, j, secretName, versionId) {
-  const valRow = $(`val-row-${i}-${j}`);
-  const btn = $(`val-btn-${i}-${j}`);
+  const valRow = $(`val-row-${i}-${j}`), btn = $(`val-btn-${i}-${j}`);
   if (valRow.style.display === 'none') {
-    valRow.style.display = '';
-    btn.textContent = 'Hide';
+    valRow.style.display = ''; btn.textContent = 'Hide';
     const pre = $(`val-pre-${i}-${j}`);
     pre.textContent = 'Loading\u2026';
     try {
       const res = await api('/api/secretmanager/value?' + new URLSearchParams({ secret: secretName, version: versionId }));
       pre.textContent = res.value;
-    } catch (e) {
-      pre.textContent = 'Error: ' + e.message;
-    }
-  } else {
-    valRow.style.display = 'none';
-    btn.textContent = 'Reveal';
-  }
+    } catch (e) { pre.textContent = 'Error: ' + e.message; }
+  } else { valRow.style.display = 'none'; btn.textContent = 'Reveal'; }
 }
 
 async function deleteSecret(name) {
   if (!confirm(`Delete secret "${name}" and all its versions?`)) return;
   try {
     await api('/api/secretmanager/secrets?' + new URLSearchParams({ secret: name }), { method: 'DELETE' });
-    loaded.secrets = false;
-    loadSecrets();
+    _sm.secrets = await api('/api/secretmanager/secrets');
+    renderSecrets();
   } catch (e) { alert('Delete failed: ' + e.message); }
 }
 
 // ── Cloud Tasks ───────────────────────────────────────────────────────────────
 async function loadTasks() {
+  _tk.queue = null;
   $('tasks-nav').style.display = 'none';
   $('tasks-content').innerHTML = '<div class="loading">Loading queues&hellip;</div>';
   try {
-    const queues = await api('/api/tasks/queues');
-    renderTaskQueues(queues);
+    _tk.queues = await api('/api/tasks/queues');
+    renderTaskQueues();
   } catch (e) {
     $('tasks-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
   }
 }
 
-function renderTaskQueues(queues) {
+function sortTkQ(f) { _tk.qSort = _tk.qSort.f===f ? {f,d:_tk.qSort.d*-1} : {f,d:1}; renderTaskQueues(); }
+
+function renderTaskQueues() {
   $('tasks-nav').style.display = 'none';
+  const sorted = _srt(_tk.queues, _tk.qSort, ['taskCount']);
+  const sth = (l,f) => _sth(l, f, _tk.qSort, 'sortTkQ');
   let rows = '';
-  for (const q of queues) {
+  for (const q of sorted) {
     const short = shortName(q.name);
-    const n = JSON.stringify(q.name);
+    const qn = JSON.stringify(q.name);
     rows += `<tr>
-      <td><button class="btn-link" onclick="loadQueueTasks(${n})">${esc(short)}</button></td>
+      <td><button class="btn-link" onclick="loadQueueTasks(${qn})">${esc(short)}</button></td>
       <td><span class="state ${stateClass(q.state)}">${q.state}</span></td>
       <td><span class="cnt">${q.taskCount}</span></td>
       <td class="dim">${q.rateLimits ? q.rateLimits.maxDispatchesPerSecond + '/s' : '&mdash;'}</td>
@@ -988,53 +1081,68 @@ function renderTaskQueues(queues) {
   }
   $('tasks-content').innerHTML = `
     <div class="card">
-      <div class="card-header"><h2>Queues</h2><span class="cnt">${queues.length}</span></div>
+      <div class="card-header"><h2>Queues</h2><span class="cnt">${sorted.length}</span></div>
       <table>
-        <thead><tr><th>Queue</th><th>State</th><th>Tasks</th><th>Rate Limit</th></tr></thead>
+        <thead><tr>${sth('Queue','name')}${sth('State','state')}${sth('Tasks','taskCount')}<th>Rate Limit</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="4" class="empty">No queues</td></tr>'}</tbody>
       </table>
     </div>`;
 }
 
 async function loadQueueTasks(queueName) {
+  _tk.queue = queueName;
+  _tk.tPg.page = 0;
+  _tk.tSort = {f:'name', d:1};
   const short = shortName(queueName);
   $('tasks-nav').style.display = 'flex';
   $('tasks-nav').innerHTML = `<a onclick="loadTasks()">Queues</a> <span>&#8250;</span> ${esc(short)}`;
   $('tasks-content').innerHTML = '<div class="loading">Loading tasks&hellip;</div>';
   try {
-    const tasks = await api('/api/tasks/tasks?' + new URLSearchParams({ queue: queueName }));
-    renderQueueTasks(queueName, tasks);
+    _tk.tasks = await api('/api/tasks/tasks?' + new URLSearchParams({ queue: queueName }));
+    renderQueueTasks();
   } catch (e) {
     $('tasks-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
   }
 }
 
-function renderQueueTasks(queueName, tasks) {
-  const short = shortName(queueName);
+function sortTkT(f) { _tk.tSort = _tk.tSort.f===f ? {f,d:_tk.tSort.d*-1} : {f,d:1}; _tk.tPg.page=0; renderQueueTasks(); }
+function pgTkT(d)   { _pgChg(_tk.tPg, _tk.tasks.length, d); renderQueueTasks(); }
+function szTkT(v)   { _tk.tPg.size=v==='all'?'all':+v; _tk.tPg.page=0; renderQueueTasks(); }
+
+function renderQueueTasks() {
+  const queueName = _tk.queue;
+  const sorted = _srt(_tk.tasks, _tk.tSort, ['dispatchCount']);
+  const {slice, total} = _pg(sorted, _tk.tPg);
+  const sth = (l,f,e='') => _sth(l, f, _tk.tSort, 'sortTkT', e);
+  const qn = JSON.stringify(queueName);
   let rows = '';
-  for (const t of tasks) {
+  for (const t of slice) {
     const taskId = shortName(t.name);
     const url = t.httpRequest ? t.httpRequest.url : '&mdash;';
     const method = t.httpRequest ? t.httpRequest.httpMethod : '';
     const tn = JSON.stringify(t.name);
-    const qn = JSON.stringify(queueName);
     rows += `<tr>
       <td class="mono">${esc(taskId)}</td>
       <td class="dim">${method ? `<code>${method}</code> ` : ''}${esc(url)}</td>
-      <td class="dim">${t.scheduleTime ? t.scheduleTime.substring(0, 19).replace('T', ' ') : '&mdash;'}</td>
+      <td class="dim" style="white-space:nowrap">${t.scheduleTime ? t.scheduleTime.substring(0, 19).replace('T', ' ') : '&mdash;'}</td>
       <td class="dim">${t.dispatchCount || 0}</td>
-      <td class="actions">
-        <button class="btn btn-danger" onclick="deleteTask(${tn}, ${qn})">Delete</button>
-      </td>
+      <td class="actions"><button class="btn btn-danger" onclick="deleteTask(${tn}, ${qn})">Delete</button></td>
     </tr>`;
   }
   $('tasks-content').innerHTML = `
     <div class="card">
-      <div class="card-header"><h2>${esc(short)}</h2><span class="cnt">${tasks.length} tasks</span></div>
+      <div class="card-header"><h2>${esc(shortName(queueName))}</h2><span class="cnt">${total} task${total!==1?'s':''}</span></div>
       <table>
-        <thead><tr><th>Task ID</th><th>HTTP Request</th><th>Schedule Time</th><th>Dispatches</th><th>Actions</th></tr></thead>
+        <thead><tr>
+          ${sth('Task ID','name')}
+          <th>HTTP Request</th>
+          ${sth('Schedule Time','scheduleTime')}
+          ${sth('Dispatches','dispatchCount')}
+          <th>Actions</th>
+        </tr></thead>
         <tbody>${rows || '<tr><td colspan="5" class="empty">No tasks</td></tr>'}</tbody>
       </table>
+      ${_pgBar(total, _tk.tPg, 'pgTkT', 'szTkT')}
     </div>`;
 }
 
@@ -1042,69 +1150,79 @@ async function deleteTask(taskName, queueName) {
   if (!confirm(`Delete task "${shortName(taskName)}"?`)) return;
   try {
     await api('/api/tasks/task?' + new URLSearchParams({ task: taskName }), { method: 'DELETE' });
-    loadQueueTasks(queueName);
+    _tk.tasks = await api('/api/tasks/tasks?' + new URLSearchParams({ queue: queueName }));
+    renderQueueTasks();
   } catch (e) { alert('Delete failed: ' + e.message); }
 }
 
 // ── BigQuery ──────────────────────────────────────────────────────────────────
 async function loadBigQuery() {
+  _bq.dataset = null;
   $('bq-nav').style.display = 'none';
   $('bq-content').innerHTML = '<div class="loading">Loading datasets&hellip;</div>';
   try {
-    const datasets = await api('/api/bigquery/datasets');
-    renderBQDatasets(datasets);
+    _bq.datasets = await api('/api/bigquery/datasets');
+    renderBQDatasets();
   } catch (e) {
     $('bq-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
   }
 }
 
-function renderBQDatasets(datasets) {
+function sortBqDs(f) { _bq.dsSort = _bq.dsSort.f===f ? {f,d:_bq.dsSort.d*-1} : {f,d:1}; renderBQDatasets(); }
+
+function renderBQDatasets() {
   $('bq-nav').style.display = 'none';
+  const sorted = _srt(_bq.datasets, _bq.dsSort, ['tableCount']);
+  const sth = (l,f) => _sth(l, f, _bq.dsSort, 'sortBqDs');
   let rows = '';
-  for (const d of datasets) {
+  for (const d of sorted) {
     const id = d.datasetId;
-    const n = JSON.stringify(id);
+    const dn = JSON.stringify(id);
     rows += `<tr>
-      <td><button class="btn-link" onclick="loadBQTables(${n})">${esc(id)}</button></td>
+      <td><button class="btn-link" onclick="loadBQTables(${dn})">${esc(id)}</button></td>
       <td><span class="cnt">${d.tableCount}</span></td>
       <td class="dim">${d.location || 'US'}</td>
-      <td class="actions">
-        <button class="btn btn-danger" onclick="deleteBQDataset(${n})">Delete</button>
-      </td>
+      <td class="actions"><button class="btn btn-danger" onclick="deleteBQDataset(${dn})">Delete</button></td>
     </tr>`;
   }
   $('bq-content').innerHTML = `
     <div class="card">
-      <div class="card-header"><h2>Datasets</h2><span class="cnt">${datasets.length}</span></div>
+      <div class="card-header"><h2>Datasets</h2><span class="cnt">${sorted.length}</span></div>
       <table>
-        <thead><tr><th>Dataset</th><th>Tables</th><th>Location</th><th>Actions</th></tr></thead>
+        <thead><tr>${sth('Dataset','datasetId')}${sth('Tables','tableCount')}${sth('Location','location')}<th>Actions</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="4" class="empty">No datasets</td></tr>'}</tbody>
       </table>
     </div>`;
 }
 
 async function loadBQTables(dataset) {
+  _bq.dataset = dataset;
+  _bq.tbSort = {f:'tableId', d:1};
   $('bq-nav').style.display = 'flex';
   $('bq-nav').innerHTML = `<a onclick="loadBigQuery()">Datasets</a> <span>&#8250;</span> ${esc(dataset)}`;
   $('bq-content').innerHTML = '<div class="loading">Loading tables&hellip;</div>';
   try {
-    const tables = await api('/api/bigquery/tables?' + new URLSearchParams({ dataset }));
-    renderBQTables(dataset, tables);
+    _bq.tables = (await api('/api/bigquery/tables?' + new URLSearchParams({ dataset })))
+      .map(t => ({...t, _fields: (t.schema && t.schema.fields) ? t.schema.fields.length : 0}));
+    renderBQTables();
   } catch (e) {
     $('bq-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
   }
 }
 
-function renderBQTables(dataset, tables) {
+function sortBqTb(f) { _bq.tbSort = _bq.tbSort.f===f ? {f,d:_bq.tbSort.d*-1} : {f,d:1}; renderBQTables(); }
+
+function renderBQTables() {
+  const dataset = _bq.dataset;
+  const sorted = _srt(_bq.tables, _bq.tbSort, ['_fields','numRows']);
   const ds = JSON.stringify(dataset);
+  const sth = (l,f) => _sth(l, f, _bq.tbSort, 'sortBqTb');
   let rows = '';
-  for (const t of tables) {
-    const id = t.tableId;
-    const tn = JSON.stringify(id);
-    const fieldCount = (t.schema && t.schema.fields) ? t.schema.fields.length : 0;
+  for (const t of sorted) {
+    const tn = JSON.stringify(t.tableId);
     rows += `<tr>
-      <td><button class="btn-link" onclick="loadBQPreview(${ds}, ${tn})">${esc(id)}</button></td>
-      <td class="dim">${fieldCount} field${fieldCount !== 1 ? 's' : ''}</td>
+      <td><button class="btn-link" onclick="loadBQPreview(${ds}, ${tn})">${esc(t.tableId)}</button></td>
+      <td class="dim">${t._fields} field${t._fields !== 1 ? 's' : ''}</td>
       <td><span class="cnt">${t.numRows || 0}</span></td>
       <td class="actions">
         <button class="btn btn-ghost" onclick="loadBQPreview(${ds}, ${tn})">Preview</button>
@@ -1115,10 +1233,10 @@ function renderBQTables(dataset, tables) {
   $('bq-content').innerHTML = `
     <div class="card">
       <div class="card-header">
-        <h2>${esc(dataset)}</h2><span class="cnt">${tables.length} table${tables.length !== 1 ? 's' : ''}</span>
+        <h2>${esc(dataset)}</h2><span class="cnt">${sorted.length} table${sorted.length!==1?'s':''}</span>
       </div>
       <table>
-        <thead><tr><th>Table</th><th>Schema</th><th>Rows</th><th>Actions</th></tr></thead>
+        <thead><tr>${sth('Table','tableId')}${sth('Schema','_fields')}${sth('Rows','numRows')}<th>Actions</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="4" class="empty">No tables</td></tr>'}</tbody>
       </table>
     </div>`;
@@ -1187,24 +1305,35 @@ async function deleteBQTable(dataset, table) {
 async function loadScheduler() {
   $('sched-content').innerHTML = '<div class="loading">Loading jobs&hellip;</div>';
   try {
-    const jobs = await api('/api/scheduler/jobs');
-    renderSchedulerJobs(jobs);
+    _sc.jobs = (await api('/api/scheduler/jobs')).map(j => {
+      const id = (j.name || '').split('/').pop();
+      return { ...j, _id: id };
+    });
+    renderSchedulerJobs();
   } catch (e) {
     $('sched-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
   }
 }
 
-function renderSchedulerJobs(jobs) {
+function sortSc(f) {
+  if (_sc.sort.f === f) _sc.sort.d *= -1; else { _sc.sort.f = f; _sc.sort.d = 1; }
+  _sc.pg.page = 0;
+  renderSchedulerJobs();
+}
+function pgSc(d) { _pgChg(_sc.pg, _sc.jobs.length, d); renderSchedulerJobs(); }
+function szSc(v) { _sc.pg.size = +v; _sc.pg.page = 0; renderSchedulerJobs(); }
+
+function renderSchedulerJobs() {
+  const sorted = _srt(_sc.jobs, _sc.sort, []);
+  const { slice, total } = _pg(sorted, _sc.pg);
   let rows = '';
-  for (const j of jobs) {
-    const name = j.name || '';
-    const id = name.split('/').pop();
-    const n = JSON.stringify(id);
+  for (const j of slice) {
+    const n = JSON.stringify(j._id);
     const stateTag = `<span class="state ${stateClass(j.state)}">${esc(j.state || 'UNKNOWN')}</span>`;
     const last = j.lastAttemptTime ? j.lastAttemptTime.substring(0, 19).replace('T', ' ') : '&mdash;';
     const paused = (j.state || '') === 'PAUSED';
     rows += `<tr>
-      <td class="mono">${esc(id)}</td>
+      <td class="mono">${esc(j._id)}</td>
       <td class="mono dim">${esc(j.schedule || '')}</td>
       <td>${stateTag}</td>
       <td class="dim">${last}</td>
@@ -1217,34 +1346,48 @@ function renderSchedulerJobs(jobs) {
       </td>
     </tr>`;
   }
+  const si = _sc.sort;
+  const th = (label, f) => _sth(label, f, si, `sortSc('${f}')`);
   $('sched-content').innerHTML = `
     <div class="card">
-      <div class="card-header"><h2>Jobs</h2><span class="cnt">${jobs.length}</span></div>
+      <div class="card-header"><h2>Jobs</h2><span class="cnt">${total}</span></div>
       <table>
-        <thead><tr><th>Job ID</th><th>Schedule</th><th>State</th><th>Last Run</th><th>Actions</th></tr></thead>
+        <thead><tr>
+          ${th('Job ID','_id')}${th('Schedule','schedule')}${th('State','state')}${th('Last Run','lastAttemptTime')}
+          <th>Actions</th>
+        </tr></thead>
         <tbody>${rows || '<tr><td colspan="5" class="empty">No jobs</td></tr>'}</tbody>
       </table>
+      ${_pgBar(total, _sc.pg, 'pgSc', 'szSc')}
     </div>`;
+}
+
+async function _reloadSc() {
+  _sc.jobs = (await api('/api/scheduler/jobs')).map(j => {
+    const id = (j.name || '').split('/').pop();
+    return { ...j, _id: id };
+  });
+  renderSchedulerJobs();
 }
 
 async function runSchedJob(id) {
   try {
     await api(`/api/scheduler/jobs/${encodeURIComponent(id)}:run`, { method: 'POST' });
-    loadScheduler();
+    await _reloadSc();
   } catch (e) { alert('Run failed: ' + e.message); }
 }
 
 async function pauseSchedJob(id) {
   try {
     await api(`/api/scheduler/jobs/${encodeURIComponent(id)}:pause`, { method: 'POST' });
-    loadScheduler();
+    await _reloadSc();
   } catch (e) { alert('Pause failed: ' + e.message); }
 }
 
 async function resumeSchedJob(id) {
   try {
     await api(`/api/scheduler/jobs/${encodeURIComponent(id)}:resume`, { method: 'POST' });
-    loadScheduler();
+    await _reloadSc();
   } catch (e) { alert('Resume failed: ' + e.message); }
 }
 
@@ -1252,8 +1395,7 @@ async function deleteSchedJob(id) {
   if (!confirm(`Delete job "${id}"?`)) return;
   try {
     await api(`/api/scheduler/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    loaded.scheduler = false;
-    loadScheduler();
+    await _reloadSc();
   } catch (e) { alert('Delete failed: ' + e.message); }
 }
 
