@@ -122,3 +122,107 @@ def test_delete_queue_removes_tasks(tasks_client):
     tasks_client.delete(f"{BASE}/queues/cascade-q")
     r = tasks_client.get(f"{BASE}/queues/cascade-q")
     assert r.status_code == 404
+
+
+def test_get_task(tasks_client):
+    tasks_client.post(
+        f"{BASE}/queues",
+        json={"name": f"projects/{PROJECT}/locations/{LOCATION}/queues/get-q"},
+    )
+    r = tasks_client.post(
+        f"{BASE}/queues/get-q/tasks",
+        json={"task": {"httpRequest": {"url": "http://example.com/work"}}},
+    )
+    task_id = r.json()["name"].split("/tasks/")[1]
+
+    r2 = tasks_client.get(f"{BASE}/queues/get-q/tasks/{task_id}")
+    assert r2.status_code == 200
+    assert r2.json()["httpRequest"]["url"] == "http://example.com/work"
+
+
+def test_task_with_headers_and_body(tasks_client):
+    import base64
+    tasks_client.post(
+        f"{BASE}/queues",
+        json={"name": f"projects/{PROJECT}/locations/{LOCATION}/queues/hdr-q"},
+    )
+    body_b64 = base64.b64encode(b'{"key":"value"}').decode()
+    r = tasks_client.post(
+        f"{BASE}/queues/hdr-q/tasks",
+        json={
+            "task": {
+                "httpRequest": {
+                    "url": "http://example.com/endpoint",
+                    "httpMethod": "POST",
+                    "headers": {"Content-Type": "application/json", "X-Custom": "header"},
+                    "body": body_b64,
+                }
+            }
+        },
+    )
+    assert r.status_code == 200
+    task = r.json()
+    assert task["httpRequest"]["headers"]["X-Custom"] == "header"
+    assert task["httpRequest"]["body"] == body_b64
+
+
+def test_duplicate_task_name_returns_409(tasks_client):
+    tasks_client.post(
+        f"{BASE}/queues",
+        json={"name": f"projects/{PROJECT}/locations/{LOCATION}/queues/dedup-q"},
+    )
+    task_body = {
+        "task": {
+            "name": f"projects/{PROJECT}/locations/{LOCATION}/queues/dedup-q/tasks/task-1",
+            "httpRequest": {"url": "http://example.com"},
+        }
+    }
+    tasks_client.post(f"{BASE}/queues/dedup-q/tasks", json=task_body)
+    r = tasks_client.post(f"{BASE}/queues/dedup-q/tasks", json=task_body)
+    assert r.status_code == 409
+
+
+def test_update_queue_retry_config(tasks_client):
+    tasks_client.post(
+        f"{BASE}/queues",
+        json={"name": f"projects/{PROJECT}/locations/{LOCATION}/queues/update-q"},
+    )
+    r = tasks_client.patch(
+        f"{BASE}/queues/update-q",
+        json={"retryConfig": {"maxAttempts": 5}},
+    )
+    assert r.status_code == 200
+    assert r.json()["retryConfig"]["maxAttempts"] == 5
+
+
+def test_create_task_on_missing_queue_returns_404(tasks_client):
+    r = tasks_client.post(
+        f"{BASE}/queues/ghost-q/tasks",
+        json={"task": {"httpRequest": {"url": "http://example.com"}}},
+    )
+    assert r.status_code == 404
+
+
+def test_force_run_task(tasks_client):
+    """tasks/{id}:run resets scheduleTime so the worker dispatches it immediately."""
+    from datetime import datetime, timezone, timedelta
+    tasks_client.post(
+        f"{BASE}/queues",
+        json={"name": f"projects/{PROJECT}/locations/{LOCATION}/queues/run-q"},
+    )
+    future = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    r = tasks_client.post(
+        f"{BASE}/queues/run-q/tasks",
+        json={"task": {
+            "httpRequest": {"url": "http://example.com"},
+            "scheduleTime": future,
+        }},
+    )
+    task_id = r.json()["name"].split("/tasks/")[1]
+
+    r2 = tasks_client.post(f"{BASE}/queues/run-q/tasks/{task_id}:run")
+    assert r2.status_code == 200
+    # scheduleTime should have been reset to approximately now (not the future)
+    from datetime import datetime, timezone
+    sched = datetime.fromisoformat(r2.json()["scheduleTime"].rstrip("Z")).replace(tzinfo=timezone.utc)
+    assert sched <= datetime.now(timezone.utc) + timedelta(seconds=5)

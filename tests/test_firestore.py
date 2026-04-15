@@ -126,3 +126,248 @@ def test_transaction_commit(firestore_client):
     assert r.status_code == 200
     r = firestore_client.get(f"/v1/{DOCS}/txn/doc1")
     assert r.json()["fields"]["val"]["stringValue"] == "from-txn"
+
+
+def test_auto_generated_document_id(firestore_client):
+    """POST to a collection without documentId generates a random ID."""
+    r = firestore_client.post(
+        f"/v1/{DOCS}/events",
+        json={"fields": {"type": {"stringValue": "click"}}},
+    )
+    assert r.status_code == 200
+    name = r.json()["name"]
+    doc_id = name.split("/events/")[1]
+    assert doc_id  # non-empty auto-generated ID
+
+    r2 = firestore_client.get(f"/v1/{DOCS}/events/{doc_id}")
+    assert r2.status_code == 200
+
+
+def test_get_missing_document_returns_404(firestore_client):
+    r = firestore_client.get(f"/v1/{DOCS}/nowhere/phantom")
+    assert r.status_code == 404
+
+
+def test_delete_missing_document_returns_404(firestore_client):
+    r = firestore_client.delete(f"/v1/{DOCS}/nowhere/phantom")
+    assert r.status_code == 404
+
+
+def test_patch_creates_document_if_missing(firestore_client):
+    """PATCH on a non-existent document creates it."""
+    r = firestore_client.patch(
+        f"/v1/{DOCS}/things/new-thing",
+        json={"fields": {"status": {"stringValue": "active"}}},
+    )
+    assert r.status_code == 200
+    assert r.json()["fields"]["status"]["stringValue"] == "active"
+
+
+def test_commit_field_mask(firestore_client):
+    """updateMask in a commit write only touches the listed fields."""
+    firestore_client.post(
+        f"/v1/{DOCS}/accounts",
+        params={"documentId": "acc1"},
+        json={"fields": {"balance": {"integerValue": "100"}, "owner": {"stringValue": "alice"}}},
+    )
+    txn = firestore_client.post(f"/v1/{DB}:beginTransaction", json={}).json()["transaction"]
+    firestore_client.post(
+        f"/v1/{DB}:commit",
+        json={
+            "transaction": txn,
+            "writes": [{
+                "update": {
+                    "name": f"{DOCS}/accounts/acc1",
+                    "fields": {"balance": {"integerValue": "200"}},
+                },
+                "updateMask": {"fieldPaths": ["balance"]},
+            }],
+        },
+    )
+    r = firestore_client.get(f"/v1/{DOCS}/accounts/acc1")
+    fields = r.json()["fields"]
+    assert fields["balance"]["integerValue"] == "200"
+    assert fields["owner"]["stringValue"] == "alice"  # untouched
+
+
+def test_commit_delete_write(firestore_client):
+    """A delete write in a commit removes the document."""
+    firestore_client.post(
+        f"/v1/{DOCS}/tmp",
+        params={"documentId": "to-go"},
+        json={"fields": {}},
+    )
+    txn = firestore_client.post(f"/v1/{DB}:beginTransaction", json={}).json()["transaction"]
+    firestore_client.post(
+        f"/v1/{DB}:commit",
+        json={"transaction": txn, "writes": [{"delete": f"{DOCS}/tmp/to-go"}]},
+    )
+    r = firestore_client.get(f"/v1/{DOCS}/tmp/to-go")
+    assert r.status_code == 404
+
+
+def test_rollback_is_accepted(firestore_client):
+    txn = firestore_client.post(f"/v1/{DB}:beginTransaction", json={}).json()["transaction"]
+    r = firestore_client.post(f"/v1/{DB}:rollback", json={"transaction": txn})
+    assert r.status_code == 200
+
+
+def test_subcollection_document(firestore_client):
+    """Documents in a nested sub-collection are stored and retrievable."""
+    firestore_client.post(
+        f"/v1/{DOCS}/users",
+        params={"documentId": "bob"},
+        json={"fields": {}},
+    )
+    r = firestore_client.post(
+        f"/v1/{DOCS}/users/bob/posts",
+        params={"documentId": "post1"},
+        json={"fields": {"title": {"stringValue": "Hello"}}},
+    )
+    assert r.status_code == 200
+
+    r2 = firestore_client.get(f"/v1/{DOCS}/users/bob/posts/post1")
+    assert r2.json()["fields"]["title"]["stringValue"] == "Hello"
+
+
+def test_list_documents_pagination(firestore_client):
+    for i in range(5):
+        firestore_client.post(
+            f"/v1/{DOCS}/paged",
+            params={"documentId": f"d{i}"},
+            json={"fields": {}},
+        )
+    r1 = firestore_client.get(f"/v1/{DOCS}/paged?pageSize=3")
+    assert len(r1.json()["documents"]) == 3
+    next_token = r1.json()["nextPageToken"]
+    assert next_token
+
+    r2 = firestore_client.get(f"/v1/{DOCS}/paged?pageSize=3&pageToken={next_token}")
+    assert len(r2.json()["documents"]) == 2
+    assert "nextPageToken" not in r2.json()
+
+
+def test_query_order_by_and_limit(firestore_client):
+    for i in (3, 1, 4, 1, 5):
+        firestore_client.post(
+            f"/v1/{DOCS}/nums",
+            json={"fields": {"v": {"integerValue": str(i)}}},
+        )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "nums"}],
+                "orderBy": [{"field": {"fieldPath": "v"}, "direction": "ASCENDING"}],
+                "limit": 3,
+            }
+        },
+    )
+    results = r.json()
+    assert len(results) == 3
+    vals = [doc["document"]["fields"]["v"]["integerValue"] for doc in results]
+    assert vals == sorted(vals)
+
+
+def test_query_composite_or_filter(firestore_client):
+    for name, color in [("apple", "red"), ("banana", "yellow"), ("grape", "purple")]:
+        firestore_client.post(
+            f"/v1/{DOCS}/fruits",
+            json={"fields": {"name": {"stringValue": name}, "color": {"stringValue": color}}},
+        )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "fruits"}],
+                "where": {
+                    "compositeFilter": {
+                        "op": "OR",
+                        "filters": [
+                            {"fieldFilter": {"field": {"fieldPath": "color"}, "op": "EQUAL", "value": {"stringValue": "red"}}},
+                            {"fieldFilter": {"field": {"fieldPath": "color"}, "op": "EQUAL", "value": {"stringValue": "yellow"}}},
+                        ],
+                    }
+                },
+            }
+        },
+    )
+    assert len(r.json()) == 2
+
+
+def test_query_array_contains(firestore_client):
+    for tags, name in [(["a", "b"], "doc1"), (["b", "c"], "doc2"), (["c", "d"], "doc3")]:
+        firestore_client.post(
+            f"/v1/{DOCS}/tagged",
+            params={"documentId": name},
+            json={"fields": {"tags": {"arrayValue": {"values": [{"stringValue": t} for t in tags]}}}},
+        )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "tagged"}],
+                "where": {
+                    "fieldFilter": {
+                        "field": {"fieldPath": "tags"},
+                        "op": "ARRAY_CONTAINS",
+                        "value": {"stringValue": "b"},
+                    }
+                },
+            }
+        },
+    )
+    names = [doc["document"]["name"].split("/")[-1] for doc in r.json()]
+    assert set(names) == {"doc1", "doc2"}
+
+
+def test_query_in_filter(firestore_client):
+    for status in ("active", "inactive", "pending"):
+        firestore_client.post(
+            f"/v1/{DOCS}/tasks",
+            json={"fields": {"status": {"stringValue": status}}},
+        )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "tasks"}],
+                "where": {
+                    "fieldFilter": {
+                        "field": {"fieldPath": "status"},
+                        "op": "IN",
+                        "value": {"arrayValue": {"values": [
+                            {"stringValue": "active"},
+                            {"stringValue": "pending"},
+                        ]}},
+                    }
+                },
+            }
+        },
+    )
+    assert len(r.json()) == 2
+
+
+def test_collection_group_query(firestore_client):
+    """allDescendants=true matches the collection at any depth."""
+    # Create docs in two separate parent paths, same collection name
+    for parent_id in ("user1", "user2"):
+        firestore_client.post(
+            f"/v1/{DOCS}/users",
+            params={"documentId": parent_id},
+            json={"fields": {}},
+        )
+        firestore_client.post(
+            f"/v1/{DOCS}/users/{parent_id}/comments",
+            params={"documentId": "c1"},
+            json={"fields": {"text": {"stringValue": f"comment from {parent_id}"}}},
+        )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "comments", "allDescendants": True}],
+            }
+        },
+    )
+    assert len(r.json()) == 2

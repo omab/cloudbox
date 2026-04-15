@@ -420,3 +420,78 @@ def test_insert_rows_missing_table_returns_404(bq_client):
         json={"rows": [{"insertId": "x", "json": {"id": 1}}]},
     )
     assert r.status_code == 404
+
+
+def test_get_missing_dataset_returns_404(bq_client):
+    r = bq_client.get(f"{BASE}/datasets/no-such-dataset")
+    assert r.status_code == 404
+
+
+def test_get_missing_table_returns_404(bq_client):
+    _setup_dataset(bq_client)
+    r = bq_client.get(f"{BASE}/datasets/myds/tables/phantom")
+    assert r.status_code == 404
+
+
+def test_get_missing_job_returns_404(bq_client):
+    r = bq_client.get(f"{BASE}/jobs/nonexistent-job")
+    assert r.status_code == 404
+
+
+def test_cancel_job(bq_client):
+    """cancel is a no-op but returns the job."""
+    r = bq_client.post(
+        f"{BASE}/jobs",
+        json={
+            "jobReference": {"projectId": PROJECT, "jobId": "cancel-job"},
+            "configuration": {"query": {"query": "SELECT 1", "useLegacySql": False}},
+        },
+    )
+    assert r.status_code == 200
+    r2 = bq_client.post(f"{BASE}/jobs/cancel-job/cancel")
+    assert r2.status_code == 200
+    assert r2.json()["job"]["jobReference"]["jobId"] == "cancel-job"
+
+
+def test_query_with_where_clause(bq_client):
+    _setup_table(bq_client)
+    bq_client.post(
+        f"{BASE}/datasets/myds/tables/users/insertAll",
+        json={"rows": [
+            {"insertId": "1", "json": {"id": 1, "name": "Alice", "score": 9.0}},
+            {"insertId": "2", "json": {"id": 2, "name": "Bob", "score": 4.0}},
+            {"insertId": "3", "json": {"id": 3, "name": "Carol", "score": 7.0}},
+        ]},
+    )
+    r = bq_client.post(
+        f"{BASE}/queries",
+        json={"query": 'SELECT name FROM "myds"."users" WHERE score >= 7', "useLegacySql": False},
+    )
+    assert r.status_code == 200
+    assert r.json()["totalRows"] == "2"
+    names = [row["f"][0]["v"] for row in r.json()["rows"]]
+    assert set(names) == {"Alice", "Carol"}
+
+
+def test_duplicate_table_returns_409(bq_client):
+    _setup_dataset(bq_client)
+    body = {
+        "tableReference": {"projectId": PROJECT, "datasetId": "myds", "tableId": "dup-tbl"},
+        "schema": SCHEMA,
+    }
+    bq_client.post(f"{BASE}/datasets/myds/tables", json=body)
+    r = bq_client.post(f"{BASE}/datasets/myds/tables", json=body)
+    assert r.status_code == 409
+
+
+def test_list_tabledata_pagination(bq_client):
+    _setup_table(bq_client)
+    bq_client.post(
+        f"{BASE}/datasets/myds/tables/users/insertAll",
+        json={"rows": [{"insertId": str(i), "json": {"id": i, "name": f"u{i}", "score": float(i)}} for i in range(5)]},
+    )
+    r = bq_client.get(f"{BASE}/datasets/myds/tables/users/data?maxResults=3")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["rows"]) == 3
+    assert body.get("pageToken")  # more pages available

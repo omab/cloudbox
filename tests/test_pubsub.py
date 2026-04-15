@@ -440,6 +440,77 @@ def test_ordering_different_keys_concurrent(pubsub_client):
     assert len(msgs) == 2
 
 
+def test_list_subscriptions(pubsub_client):
+    topic = f"{PROJECT}/topics/list-sub-topic"
+    pubsub_client.put(f"/v1/{topic}")
+    for i in range(3):
+        sub = f"{PROJECT}/subscriptions/listed-sub-{i}"
+        pubsub_client.put(f"/v1/{sub}", json={"name": sub, "topic": topic})
+
+    r = pubsub_client.get(f"/v1/{PROJECT}/subscriptions")
+    assert r.status_code == 200
+    names = [s["name"] for s in r.json()["subscriptions"]]
+    assert all(f"listed-sub-{i}" in " ".join(names) for i in range(3))
+
+
+def test_get_missing_topic_returns_404(pubsub_client):
+    r = pubsub_client.get(f"/v1/{PROJECT}/topics/nonexistent")
+    assert r.status_code == 404
+
+
+def test_get_missing_subscription_returns_404(pubsub_client):
+    r = pubsub_client.get(f"/v1/{PROJECT}/subscriptions/nonexistent")
+    assert r.status_code == 404
+
+
+def test_publish_to_missing_topic_returns_404(pubsub_client):
+    r = pubsub_client.post(
+        f"/v1/{PROJECT}/topics/ghost:publish",
+        json={"messages": [{"data": "dA=="}]},
+    )
+    assert r.status_code == 404
+
+
+def test_modify_ack_deadline_keeps_message_unacked(pubsub_client):
+    """Extending the ack deadline prevents redelivery until it expires."""
+    topic = f"{PROJECT}/topics/deadline-topic"
+    sub = f"{PROJECT}/subscriptions/deadline-sub"
+    pubsub_client.put(f"/v1/{topic}")
+    pubsub_client.put(f"/v1/{sub}", json={"name": sub, "topic": topic})
+    pubsub_client.post(f"/v1/{topic}:publish", json={"messages": [{"data": "dA=="}]})
+
+    r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
+    ack_id = r.json()["receivedMessages"][0]["ackId"]
+
+    # Extend deadline to 60 s
+    pubsub_client.post(f"/v1/{sub}:modifyAckDeadline", json={"ackIds": [ack_id], "ackDeadlineSeconds": 60})
+
+    # Pulling again should return nothing (still unacked, deadline not expired)
+    r2 = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
+    assert r2.json()["receivedMessages"] == []
+
+
+def test_delivery_attempt_increments_on_requeue(pubsub_client):
+    """deliveryAttempt increases each time a message is requeued after nack."""
+    topic = f"{PROJECT}/topics/retry-attempt-topic"
+    sub = f"{PROJECT}/subscriptions/retry-attempt-sub"
+    pubsub_client.put(f"/v1/{topic}")
+    pubsub_client.put(f"/v1/{sub}", json={"name": sub, "topic": topic})
+    pubsub_client.post(f"/v1/{topic}:publish", json={"messages": [{"data": "dA=="}]})
+
+    from localgcp.services.pubsub import store as ps_store
+
+    r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
+    assert r.json()["receivedMessages"][0]["deliveryAttempt"] == 1
+    ack_id = r.json()["receivedMessages"][0]["ackId"]
+
+    # Nack immediately
+    ps_store.modify_ack_deadline(sub, [ack_id], 0)
+
+    r2 = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
+    assert r2.json()["receivedMessages"][0]["deliveryAttempt"] == 2
+
+
 def test_delete_topic_removes_subscriptions(pubsub_client):
     topic = f"{PROJECT}/topics/del-topic"
     sub = f"{PROJECT}/subscriptions/del-sub"

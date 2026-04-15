@@ -86,3 +86,94 @@ def test_destroy_version_clears_payload(sm_client):
 
     r = sm_client.post(f"/v1/projects/{PROJECT}/secrets/destroyable/versions/1:access")
     assert r.status_code == 403  # not enabled
+
+
+def test_update_secret_labels(sm_client):
+    sm_client.post(f"/v1/projects/{PROJECT}/secrets", params={"secretId": "labeled"}, json={})
+    r = sm_client.patch(
+        f"/v1/projects/{PROJECT}/secrets/labeled",
+        json={"labels": {"env": "prod", "team": "backend"}},
+    )
+    assert r.status_code == 200
+    assert r.json()["labels"]["env"] == "prod"
+
+
+def test_get_version_by_number(sm_client):
+    sm_client.post(f"/v1/projects/{PROJECT}/secrets", params={"secretId": "numbered"}, json={})
+    sm_client.post(
+        f"/v1/projects/{PROJECT}/secrets/numbered:addVersion",
+        json={"payload": {"data": base64.b64encode(b"v1").decode()}},
+    )
+    sm_client.post(
+        f"/v1/projects/{PROJECT}/secrets/numbered:addVersion",
+        json={"payload": {"data": base64.b64encode(b"v2").decode()}},
+    )
+    r = sm_client.get(f"/v1/projects/{PROJECT}/secrets/numbered/versions/1")
+    assert r.status_code == 200
+    assert "/versions/1" in r.json()["name"]
+
+    r2 = sm_client.get(f"/v1/projects/{PROJECT}/secrets/numbered/versions/2")
+    assert "/versions/2" in r2.json()["name"]
+
+
+def test_list_versions(sm_client):
+    sm_client.post(f"/v1/projects/{PROJECT}/secrets", params={"secretId": "multi-ver"}, json={})
+    for i in range(3):
+        sm_client.post(
+            f"/v1/projects/{PROJECT}/secrets/multi-ver:addVersion",
+            json={"payload": {"data": base64.b64encode(f"val{i}".encode()).decode()}},
+        )
+    r = sm_client.get(f"/v1/projects/{PROJECT}/secrets/multi-ver/versions")
+    assert r.status_code == 200
+    assert r.json()["totalSize"] == 3
+    assert len(r.json()["versions"]) == 3
+
+
+def test_disable_version_blocks_access(sm_client):
+    sm_client.post(f"/v1/projects/{PROJECT}/secrets", params={"secretId": "toggled"}, json={})
+    sm_client.post(
+        f"/v1/projects/{PROJECT}/secrets/toggled:addVersion",
+        json={"payload": {"data": base64.b64encode(b"secret").decode()}},
+    )
+    sm_client.post(f"/v1/projects/{PROJECT}/secrets/toggled/versions/1:disable")
+
+    r = sm_client.post(f"/v1/projects/{PROJECT}/secrets/toggled/versions/1:access")
+    assert r.status_code == 403
+
+    # Re-enable and access should succeed
+    sm_client.post(f"/v1/projects/{PROJECT}/secrets/toggled/versions/1:enable")
+    r = sm_client.post(f"/v1/projects/{PROJECT}/secrets/toggled/versions/1:access")
+    assert r.status_code == 200
+
+
+def test_filter_versions_by_state(sm_client):
+    sm_client.post(f"/v1/projects/{PROJECT}/secrets", params={"secretId": "filterable"}, json={})
+    for _ in range(2):
+        sm_client.post(
+            f"/v1/projects/{PROJECT}/secrets/filterable:addVersion",
+            json={"payload": {"data": base64.b64encode(b"x").decode()}},
+        )
+    sm_client.post(f"/v1/projects/{PROJECT}/secrets/filterable/versions/1:disable")
+
+    r = sm_client.get(f"/v1/projects/{PROJECT}/secrets/filterable/versions?filter=state=DISABLED")
+    assert r.status_code == 200
+    versions = r.json()["versions"]
+    assert all(v["state"] == "DISABLED" for v in versions)
+    assert len(versions) == 1
+
+
+def test_delete_secret_cascades_versions(sm_client):
+    sm_client.post(f"/v1/projects/{PROJECT}/secrets", params={"secretId": "cascade"}, json={})
+    sm_client.post(
+        f"/v1/projects/{PROJECT}/secrets/cascade:addVersion",
+        json={"payload": {"data": base64.b64encode(b"data").decode()}},
+    )
+    sm_client.delete(f"/v1/projects/{PROJECT}/secrets/cascade")
+
+    r = sm_client.get(f"/v1/projects/{PROJECT}/secrets/cascade/versions")
+    assert r.status_code == 404
+
+
+def test_get_missing_secret_returns_404(sm_client):
+    r = sm_client.get(f"/v1/projects/{PROJECT}/secrets/nonexistent")
+    assert r.status_code == 404
