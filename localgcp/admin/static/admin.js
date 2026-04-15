@@ -5,6 +5,8 @@ let _publishTopic = '';
 // ── Utilities ────────────────────────────────────────────────────────────────
 const $  = id => document.getElementById(id);
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// Quote a string for safe use as a single-quoted onclick argument.
+const _q = s => "'" + String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
 
 function shortName(path) {
   const parts = String(path).split('/');
@@ -273,12 +275,11 @@ function renderGCSBuckets() {
 
   let rows = '';
   for (const b of sorted) {
-    const n = JSON.stringify(b.name);
     rows += `<tr>
-      <td><button class="btn-link" onclick="loadGCSObjects(${n})">${esc(b.name)}</button></td>
+      <td><button class="btn-link" onclick="loadGCSObjects(${_q(b.name)})">${esc(b.name)}</button></td>
       <td><span class="cnt">${b.objectCount}</span></td>
       <td class="dim">${b.timeCreated ? b.timeCreated.substring(0, 10) : '&mdash;'}</td>
-      <td class="actions"><button class="btn btn-danger" onclick="deleteGCSBucket(${n})">Delete</button></td>
+      <td class="actions"><button class="btn btn-danger" onclick="deleteGCSBucket(${_q(b.name)})">Delete</button></td>
     </tr>`;
   }
   $('gcs-content').innerHTML = `
@@ -352,16 +353,14 @@ function renderGCSObjects() {
     return `<th class="sortable${cls ? ' ' + cls : ''}" onclick="sortGCSObjects('${field}')"${extra}>${label} ${icon}</th>`;
   };
 
-  const bn = JSON.stringify(bucket);
   let rows = '';
   for (const o of page) {
-    const on = JSON.stringify(o.name);
     rows += `<tr>
       <td class="mono">${esc(o.name)}</td>
       <td class="dim" style="white-space:nowrap">${humanSize(o.size)}</td>
       <td class="dim">${esc(o.contentType || '')}</td>
       <td class="dim" style="white-space:nowrap">${o.updated ? o.updated.substring(0, 19).replace('T', ' ') : '&mdash;'}</td>
-      <td class="actions"><button class="btn btn-danger" onclick="deleteGCSObject(${bn}, ${on})">Delete</button></td>
+      <td class="actions"><button class="btn btn-danger" onclick="deleteGCSObject(${_q(bucket)}, ${_q(o.name)})">Delete</button></td>
     </tr>`;
   }
 
@@ -457,14 +456,13 @@ function renderPsTopics() {
   const sth = (l,f) => _sth(l, f, _ps.tSort, 'sortPsTopic');
   let rows = '';
   for (const t of slice) {
-    const tn = JSON.stringify(t.name);
     rows += `<tr>
       <td class="mono">${esc(shortName(t.name))}</td>
       <td><span class="cnt">${t.subscriptionCount}</span></td>
       <td class="dim">${esc(t.name)}</td>
       <td class="actions">
-        <button class="btn btn-secondary" onclick="openPublishModal(${tn})">Publish</button>
-        <button class="btn btn-danger"    onclick="deletePubSubTopic(${tn})">Delete</button>
+        <button class="btn btn-secondary" onclick="openPublishModal(${_q(t.name)})">Publish</button>
+        <button class="btn btn-danger"    onclick="deletePubSubTopic(${_q(t.name)})">Delete</button>
       </td>
     </tr>`;
   }
@@ -489,13 +487,12 @@ function renderPsSubs() {
   const sth = (l,f) => _sth(l, f, _ps.sSort, 'sortPsSub');
   let rows = '';
   for (const s of slice) {
-    const sn = JSON.stringify(s.name);
     rows += `<tr>
       <td class="mono">${esc(shortName(s.name))}</td>
       <td class="dim mono">${esc(shortName(s.topic))}</td>
       <td><span class="cnt">${s.queueDepth}</span></td>
       <td class="dim">${s.ackDeadlineSeconds}s</td>
-      <td class="actions"><button class="btn btn-danger" onclick="deletePubSubSub(${sn})">Delete</button></td>
+      <td class="actions"><button class="btn btn-danger" onclick="deletePubSubSub(${_q(s.name)})">Delete</button></td>
     </tr>`;
   }
   $('ps-subs').innerHTML = `
@@ -578,9 +575,8 @@ function renderFirestoreCollections() {
   const sth = (l,f) => _sth(l, f, _fs.cSort, 'sortFsCol');
   let rows = '';
   for (const c of sorted) {
-    const cn = JSON.stringify(c.name);
     rows += `<tr>
-      <td><button class="btn-link" onclick="loadFirestoreDocs(${cn})">${esc(c.name)}</button></td>
+      <td><button class="btn-link" onclick="loadFirestoreDocs(${_q(c.name)})">${esc(c.name)}</button></td>
       <td><span class="cnt">${c.documentCount}</span></td>
     </tr>`;
   }
@@ -619,19 +615,17 @@ function renderFirestoreDocs() {
   const sorted = _srt(_fs.docs, _fs.dSort, ['_fields']);
   const {slice, total} = _pg(sorted, _fs.dPg);
   const sth = (l,f) => _sth(l, f, _fs.dSort, 'sortFsDoc');
-  const cn = JSON.stringify(collection);
+  _fs._rendered = slice;
   let rows = '';
   for (let i = 0; i < slice.length; i++) {
     const doc = slice[i];
-    const dn = JSON.stringify(doc.name || '');
-    const fieldsJson = JSON.stringify(doc.fields || {}, null, 2);
     rows += `<tr id="dr-${i}">
       <td class="mono">${esc(doc._id)}</td>
       <td><span class="cnt">${doc._fields}</span></td>
       <td class="dim">${doc.updateTime ? doc.updateTime.substring(0, 19).replace('T', ' ') : '&mdash;'}</td>
       <td class="actions">
-        <button class="btn btn-ghost" id="view-btn-${i}" onclick="toggleDocView(${i}, ${JSON.stringify(fieldsJson)})">View</button>
-        <button class="btn btn-danger" onclick="deleteFirestoreDoc(${dn}, ${cn})">Delete</button>
+        <button class="btn btn-ghost" id="view-btn-${i}" onclick="toggleDocView(${i})">View</button>
+        <button class="btn btn-danger" onclick="deleteFirestoreDoc(${_q(doc.name || '')}, ${_q(collection)})">Delete</button>
       </td>
     </tr>
     <tr id="dv-${i}" style="display:none">
@@ -649,10 +643,11 @@ function renderFirestoreDocs() {
     </div>`;
 }
 
-function toggleDocView(i, fieldsJson) {
+function toggleDocView(i) {
   const viewRow = $('dv-' + i), btn = $('view-btn-' + i);
   if (viewRow.style.display === 'none') {
-    $('df-' + i).textContent = fieldsJson;
+    const doc = (_fs._rendered || [])[i];
+    $('df-' + i).textContent = JSON.stringify((doc && doc.fields) || {}, null, 2);
     viewRow.style.display = ''; btn.textContent = 'Hide';
   } else { viewRow.style.display = 'none'; btn.textContent = 'View'; }
 }
@@ -690,14 +685,13 @@ function renderSecrets() {
   for (let i = 0; i < slice.length; i++) {
     const s = slice[i];
     const short = shortName(s.name);
-    const sn = JSON.stringify(short);
     rows += `<tr id="sr-${i}">
       <td class="mono">${esc(short)}</td>
       <td><span class="cnt">${s.versionCount}</span></td>
       <td class="dim">${s.createTime ? s.createTime.substring(0, 10) : '&mdash;'}</td>
       <td class="actions">
-        <button class="btn btn-ghost" id="sv-btn-${i}" onclick="toggleSecretVersions(${i}, ${sn})">Versions</button>
-        <button class="btn btn-danger" onclick="deleteSecret(${sn})">Delete</button>
+        <button class="btn btn-ghost" id="sv-btn-${i}" onclick="toggleSecretVersions(${i}, ${_q(short)})">Versions</button>
+        <button class="btn btn-danger" onclick="deleteSecret(${_q(short)})">Delete</button>
       </td>
     </tr>
     <tr id="sv-${i}" style="display:none">
@@ -729,13 +723,12 @@ async function toggleSecretVersions(i, secretName) {
       for (let j = 0; j < versions.length; j++) {
         const v = versions[j];
         const vNum = v.name.split('/versions/').pop();
-        const sn = JSON.stringify(secretName), vn = JSON.stringify(vNum);
         vRows += `<tr>
           <td class="mono">v${esc(vNum)}</td>
           <td><span class="state ${stateClass(v.state)}">${v.state}</span></td>
           <td class="dim">${v.createTime ? v.createTime.substring(0, 19).replace('T', ' ') : '&mdash;'}</td>
           <td class="actions">${v.state === 'ENABLED'
-            ? `<button class="btn btn-ghost" id="val-btn-${i}-${j}" onclick="toggleSecretValue(${i}, ${j}, ${sn}, ${vn})">Reveal</button>`
+            ? `<button class="btn btn-ghost" id="val-btn-${i}-${j}" onclick="toggleSecretValue(${i}, ${j}, ${_q(secretName)}, ${_q(vNum)})">Reveal</button>`
             : ''}</td>
         </tr>
         <tr id="val-row-${i}-${j}" style="display:none">
@@ -793,9 +786,8 @@ function renderTaskQueues() {
   let rows = '';
   for (const q of sorted) {
     const short = shortName(q.name);
-    const qn = JSON.stringify(q.name);
     rows += `<tr>
-      <td><button class="btn-link" onclick="loadQueueTasks(${qn})">${esc(short)}</button></td>
+      <td><button class="btn-link" onclick="loadQueueTasks(${_q(q.name)})">${esc(short)}</button></td>
       <td><span class="state ${stateClass(q.state)}">${q.state}</span></td>
       <td><span class="cnt">${q.taskCount}</span></td>
       <td class="dim">${q.rateLimits ? q.rateLimits.maxDispatchesPerSecond + '/s' : '&mdash;'}</td>
@@ -836,19 +828,17 @@ function renderQueueTasks() {
   const sorted = _srt(_tk.tasks, _tk.tSort, ['dispatchCount']);
   const {slice, total} = _pg(sorted, _tk.tPg);
   const sth = (l,f,e='') => _sth(l, f, _tk.tSort, 'sortTkT', e);
-  const qn = JSON.stringify(queueName);
   let rows = '';
   for (const t of slice) {
     const taskId = shortName(t.name);
     const url = t.httpRequest ? t.httpRequest.url : '&mdash;';
     const method = t.httpRequest ? t.httpRequest.httpMethod : '';
-    const tn = JSON.stringify(t.name);
     rows += `<tr>
       <td class="mono">${esc(taskId)}</td>
       <td class="dim">${method ? `<code>${method}</code> ` : ''}${esc(url)}</td>
       <td class="dim" style="white-space:nowrap">${t.scheduleTime ? t.scheduleTime.substring(0, 19).replace('T', ' ') : '&mdash;'}</td>
       <td class="dim">${t.dispatchCount || 0}</td>
-      <td class="actions"><button class="btn btn-danger" onclick="deleteTask(${tn}, ${qn})">Delete</button></td>
+      <td class="actions"><button class="btn btn-danger" onclick="deleteTask(${_q(t.name)}, ${_q(queueName)})">Delete</button></td>
     </tr>`;
   }
   $('tasks-content').innerHTML = `
@@ -899,12 +889,11 @@ function renderBQDatasets() {
   let rows = '';
   for (const d of sorted) {
     const id = d.datasetId;
-    const dn = JSON.stringify(id);
     rows += `<tr>
-      <td><button class="btn-link" onclick="loadBQTables(${dn})">${esc(id)}</button></td>
+      <td><button class="btn-link" onclick="loadBQTables(${_q(id)})">${esc(id)}</button></td>
       <td><span class="cnt">${d.tableCount}</span></td>
       <td class="dim">${d.location || 'US'}</td>
-      <td class="actions"><button class="btn btn-danger" onclick="deleteBQDataset(${dn})">Delete</button></td>
+      <td class="actions"><button class="btn btn-danger" onclick="deleteBQDataset(${_q(id)})">Delete</button></td>
     </tr>`;
   }
   $('bq-content').innerHTML = `
@@ -937,18 +926,16 @@ function sortBqTb(f) { _bq.tbSort = _bq.tbSort.f===f ? {f,d:_bq.tbSort.d*-1} : {
 function renderBQTables() {
   const dataset = _bq.dataset;
   const sorted = _srt(_bq.tables, _bq.tbSort, ['_fields','numRows']);
-  const ds = JSON.stringify(dataset);
   const sth = (l,f) => _sth(l, f, _bq.tbSort, 'sortBqTb');
   let rows = '';
   for (const t of sorted) {
-    const tn = JSON.stringify(t.tableId);
     rows += `<tr>
-      <td><button class="btn-link" onclick="loadBQPreview(${ds}, ${tn})">${esc(t.tableId)}</button></td>
+      <td><button class="btn-link" onclick="loadBQPreview(${_q(dataset)}, ${_q(t.tableId)})">${esc(t.tableId)}</button></td>
       <td class="dim">${t._fields} field${t._fields !== 1 ? 's' : ''}</td>
       <td><span class="cnt">${t.numRows || 0}</span></td>
       <td class="actions">
-        <button class="btn btn-ghost" onclick="loadBQPreview(${ds}, ${tn})">Preview</button>
-        <button class="btn btn-danger" onclick="deleteBQTable(${ds}, ${tn})">Delete</button>
+        <button class="btn btn-ghost" onclick="loadBQPreview(${_q(dataset)}, ${_q(t.tableId)})">Preview</button>
+        <button class="btn btn-danger" onclick="deleteBQTable(${_q(dataset)}, ${_q(t.tableId)})">Delete</button>
       </td>
     </tr>`;
   }
@@ -965,9 +952,8 @@ function renderBQTables() {
 }
 
 async function loadBQPreview(dataset, table) {
-  const ds = JSON.stringify(dataset);
   $('bq-nav').style.display = 'flex';
-  $('bq-nav').innerHTML = `<a onclick="loadBigQuery()">Datasets</a> <span>&#8250;</span> <a onclick="loadBQTables(${ds})">${esc(dataset)}</a> <span>&#8250;</span> ${esc(table)}`;
+  $('bq-nav').innerHTML = `<a onclick="loadBigQuery()">Datasets</a> <span>&#8250;</span> <a onclick="loadBQTables(${_q(dataset)})">${esc(dataset)}</a> <span>&#8250;</span> ${esc(table)}`;
   $('bq-content').innerHTML = '<div class="loading">Loading preview&hellip;</div>';
   try {
     const data = await api('/api/bigquery/preview?' + new URLSearchParams({ dataset, table }));
@@ -1050,7 +1036,6 @@ function renderSchedulerJobs() {
   const { slice, total } = _pg(sorted, _sc.pg);
   let rows = '';
   for (const j of slice) {
-    const n = JSON.stringify(j._id);
     const stateTag = `<span class="state ${stateClass(j.state)}">${esc(j.state || 'UNKNOWN')}</span>`;
     const last = j.lastAttemptTime ? j.lastAttemptTime.substring(0, 19).replace('T', ' ') : '&mdash;';
     const paused = (j.state || '') === 'PAUSED';
@@ -1060,11 +1045,11 @@ function renderSchedulerJobs() {
       <td>${stateTag}</td>
       <td class="dim">${last}</td>
       <td class="actions">
-        <button class="btn btn-ghost" onclick="runSchedJob(${n})" title="Force run">Run</button>
+        <button class="btn btn-ghost" onclick="runSchedJob(${_q(j._id)})" title="Force run">Run</button>
         ${paused
-          ? `<button class="btn btn-secondary" onclick="resumeSchedJob(${n})">Resume</button>`
-          : `<button class="btn btn-ghost" onclick="pauseSchedJob(${n})">Pause</button>`}
-        <button class="btn btn-danger" onclick="deleteSchedJob(${n})">Delete</button>
+          ? `<button class="btn btn-secondary" onclick="resumeSchedJob(${_q(j._id)})">Resume</button>`
+          : `<button class="btn btn-ghost" onclick="pauseSchedJob(${_q(j._id)})">Pause</button>`}
+        <button class="btn btn-danger" onclick="deleteSchedJob(${_q(j._id)})">Delete</button>
       </td>
     </tr>`;
   }
