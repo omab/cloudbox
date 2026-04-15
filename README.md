@@ -261,6 +261,172 @@ localgcp/services/<service>/
 
 BigQuery uses an additional `engine.py` module wrapping DuckDB instead of a `NamespacedStore`.
 
+## Feature Matrix
+
+Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
+
+### Cloud Storage
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Create / get / list / delete bucket | ✅ | |
+| Upload — simple media (`uploadType=media`) | ✅ | |
+| Upload — multipart (`uploadType=multipart`) | ✅ | Metadata + body in one request |
+| Upload — resumable (`uploadType=resumable`) | ❌ | SDK default for files > 8 MiB |
+| Download object | ✅ | Both `/o/{name}?alt=media` and `/download/` paths |
+| Get / update object metadata | ✅ | PATCH merges `contentType`, `metadata`, `cacheControl`, `contentEncoding`, `contentDisposition` |
+| Delete object | ✅ | |
+| List objects (prefix, delimiter, pagination) | ✅ | Virtual directory simulation via delimiter |
+| Copy object (within or across buckets) | ✅ | |
+| Compose objects | ❌ | |
+| Rewrite object | ❌ | |
+| Object versioning | ❌ | Generation number increments on overwrite but old versions are not retained |
+| MD5 hash + CRC32c checksum | ✅ | Computed and returned on upload |
+| ETag | ✅ | MD5-based |
+| Byte-range downloads (`Range` header) | ❌ | |
+| Conditional requests (`If-Match`, `If-None-Match`) | ❌ | |
+| Pub/Sub notifications (bucket events) | ✅ | `OBJECT_FINALIZE`, `OBJECT_DELETE`, `OBJECT_METADATA_UPDATE` |
+| Notification config CRUD | ✅ | |
+| Object lifecycle rules | ❌ | |
+| Bucket / object ACLs | ❌ | All requests succeed regardless of caller identity |
+| IAM policies (`getIamPolicy` / `setIamPolicy`) | ❌ | |
+| Signed URLs | ❌ | |
+| CORS configuration | ❌ | |
+| Bucket retention policies / locks | ❌ | |
+
+### Pub/Sub
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Create / get / list / delete topic | ✅ | |
+| Publish messages (single or batch) | ✅ | |
+| Create / get / list / delete subscription | ✅ | |
+| Pull messages | ✅ | `maxMessages`, returns `ackId` + `deliveryAttempt` |
+| Acknowledge messages | ✅ | |
+| Modify ack deadline | ✅ | Including deadline=0 for immediate nack |
+| Ack deadline expiry + redelivery | ✅ | Expired messages re-queued on next pull |
+| Push subscriptions | ✅ | POSTs to `pushEndpoint`; 2xx → ack, non-2xx/error → nack + requeue |
+| Dead-letter policy | ✅ | Routes to DLQ topic after `maxDeliveryAttempts` |
+| Retry policy (exponential backoff) | ✅ | `minimumBackoff` / `maximumBackoff` per GCP duration string |
+| Message filtering | ✅ | `attributes.KEY = "VAL"`, `hasPrefix(...)`, `NOT` / `AND` / `OR` |
+| Message ordering | ✅ | One in-flight message per `orderingKey` at a time |
+| gRPC server (port 8085) | ✅ | Compatible with `PUBSUB_EMULATOR_HOST` |
+| REST server (port 8086) | ✅ | `transport="rest"` SDK clients |
+| Streaming Pull (gRPC) | ❌ | `AsyncSubscriberClient.subscribe()` not supported |
+| Snapshots / seek | ❌ | |
+| Schema validation | ❌ | |
+| BigQuery / Cloud Storage subscriptions | ❌ | |
+| Topic message retention | ❌ | |
+
+### Firestore
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Create / get / update / delete document | ✅ | |
+| Create with auto-generated ID | ✅ | |
+| List documents in collection | ✅ | Pagination via `pageSize` / `pageToken` |
+| Batch get | ✅ | |
+| Transactions (`beginTransaction` / `commit` / `rollback`) | ✅ | Serialized; no true isolation (optimistic concurrency not enforced) |
+| Field mask updates (`updateMask`) | ✅ | |
+| `runQuery` — `WHERE` filters | ✅ | `EQUAL`, `NOT_EQUAL`, `<`, `<=`, `>`, `>=`, `IN`, `NOT_IN`, `ARRAY_CONTAINS`, `ARRAY_CONTAINS_ANY`, `IS_NULL`, `IS_NAN` and negations |
+| `runQuery` — composite filters (`AND` / `OR`) | ✅ | |
+| `runQuery` — `ORDER BY` (multi-field) | ✅ | `ASCENDING` / `DESCENDING` |
+| `runQuery` — `LIMIT` / `OFFSET` | ✅ | |
+| `runQuery` — collection group queries | ✅ | `allDescendants: true` |
+| `runQuery` — cursor pagination (`startAt` / `endBefore`) | ❌ | |
+| `runQuery` — field projection (`SELECT`) | ❌ | |
+| Batch write | ❌ | |
+| Field transforms (`increment`, `arrayUnion`, `arrayRemove`, `serverTimestamp`) | ❌ | |
+| Aggregation queries (`COUNT`, `SUM`, `AVG`) | ❌ | |
+| Real-time listeners (`listen` endpoint) | ❌ | `on_snapshot()` / `DocumentReference.listen()` not supported |
+| Document preconditions (`exists`, `updateTime`) | ❌ | |
+| IAM / security rules | ❌ | All requests succeed |
+
+### Secret Manager
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Create / get / list / update / delete secret | ✅ | |
+| Add secret version | ✅ | |
+| Get / list versions | ✅ | `filter` by state supported |
+| Access secret version (read payload) | ✅ | Respects `ENABLED` state check |
+| Enable / disable / destroy version | ✅ | Destroy wipes payload |
+| Resolve `latest` version | ✅ | Returns highest-numbered `ENABLED` version |
+| Secret labels | ✅ | |
+| IAM policies | ❌ | |
+| Rotation notifications (Pub/Sub) | ❌ | |
+| Replication configuration | ❌ | Single-region assumed |
+| Secret annotations / etag conditions | ❌ | |
+| CMEK | ❌ | Not applicable for local dev |
+
+### Cloud Tasks
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Create / get / list / delete queue | ✅ | |
+| Update queue (`rateLimits`, `retryConfig`) | ✅ | Stored but rate limits not enforced |
+| Pause / resume / purge queue | ✅ | |
+| Create task (HTTP target) | ✅ | `url`, `httpMethod`, `headers`, `body` (base64) |
+| List / get / delete task | ✅ | |
+| Force-run task | ✅ | Ignores `scheduleTime` |
+| Deferred execution (`scheduleTime`) | ✅ | Worker dispatches when time arrives |
+| Retry on failure (`maxAttempts`) | ✅ | Task dropped after `maxAttempts` |
+| Automatic dispatch worker | ✅ | Polls every 1 second |
+| `dispatchCount` / `firstAttempt` / `lastAttempt` tracking | ✅ | |
+| App Engine HTTP tasks | ❌ | |
+| OIDC / OAuth tokens in task dispatch | ❌ | |
+| Rate limiting enforcement (`maxDispatchesPerSecond`, `maxConcurrentDispatches`) | ❌ | Config stored, not enforced |
+| Retry backoff (`minBackoff`, `maxBackoff`, `maxDoublings`) | ❌ | Only `maxAttempts` is enforced |
+| Task deduplication (content-based) | ❌ | Duplicate rejected only on exact name collision |
+
+### BigQuery
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Create / get / list / delete dataset | ✅ | |
+| Create / get / list / delete table (with schema) | ✅ | |
+| `SELECT` / `WITH` / `VALUES` queries | ✅ | Executed via DuckDB |
+| DML: `INSERT` / `UPDATE` / `DELETE` | ✅ | Returns `numDmlAffectedRows` |
+| `CREATE TABLE AS SELECT` (CTAS) | ✅ | |
+| `SHOW` / `DESCRIBE` / `EXPLAIN` / `PRAGMA` | ✅ | DuckDB native |
+| Backtick identifier rewriting (`project.dataset.table`) | ✅ | Converted to DuckDB double-quoted form |
+| Streaming inserts (`insertAll`) | ✅ | Rows appended via DuckDB `INSERT` |
+| Read rows (`tabledata.list`) | ✅ | |
+| Async job insert + poll (`jobs.insert` / `jobs.get`) | ✅ | Jobs complete synchronously; polling always returns done |
+| Sync query shortcut (`queries` endpoint) | ✅ | |
+| `getQueryResults` | ✅ | |
+| Parameterized queries (`queryParameters`) | ❌ | |
+| Partitioned / clustered tables | ❌ | Schema ignored; data stored flat in DuckDB |
+| Table update / schema evolution | ❌ | |
+| Views | ❌ | |
+| Authorized views | ❌ | |
+| External tables | ❌ | |
+| Scripting / multi-statement queries | 🟡 | Single-statement only; DuckDB may handle simple cases |
+| `INFORMATION_SCHEMA` queries | 🟡 | DuckDB's own `information_schema` works; GCP-specific views not available |
+| Geography / spatial functions | 🟡 | Only what DuckDB supports natively |
+| Array / struct / JSON functions | 🟡 | DuckDB syntax, not always identical to BigQuery |
+| IAM / row-level security | ❌ | |
+| BI Engine / reservations | ❌ | Not applicable for local dev |
+
+### Cloud Scheduler
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Create / get / list / update / delete job | ✅ | |
+| Pause / resume job | ✅ | |
+| Force-run job | ✅ | Dispatches immediately regardless of schedule |
+| HTTP target (`httpTarget`) | ✅ | All HTTP methods; custom headers supported |
+| Cron schedule (all standard expressions) | ✅ | Evaluated via `croniter` |
+| Background dispatch worker | ✅ | Polls every 30 seconds |
+| Job state tracking (`lastAttemptTime`, `status`) | ✅ | |
+| Pub/Sub target | ❌ | |
+| App Engine target | ❌ | |
+| OIDC / OAuth auth for HTTP target | ❌ | Requests sent without auth headers |
+| Retry configuration | ❌ | Failed jobs are not retried |
+| Timezone support | 🟡 | Parsed by `croniter`; UTC works reliably, some IANA zones may differ from GCP |
+
+---
+
 ## Roadmap
 
 - Spanner
