@@ -310,7 +310,7 @@ let _publishTopic = '';
 
 // ── Utilities ────────────────────────────────────────────────────────────────
 const $  = id => document.getElementById(id);
-const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
 function shortName(path) {
   const parts = String(path).split('/');
