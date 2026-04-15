@@ -83,6 +83,7 @@ const _gcs = {
   buckets: [],
   bSort: { f: 'name', d: 1 },
   bucket: null,
+  prefix: '',
   objects: [],
   oSort: { f: 'name', d: 1 },
   page: 0,
@@ -142,11 +143,23 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => showTab(btn.dataset.tab));
 });
 
+function _parseGCSHash(hash) {
+  // hash like "gcs/bucket" or "gcs/bucket/folder/" or "gcs/bucket/folder/sub/"
+  const rest = hash.slice(4); // strip leading "gcs/"
+  const firstSlash = rest.indexOf('/');
+  if (firstSlash === -1) {
+    return { bucket: decodeURIComponent(rest), prefix: '' };
+  }
+  const bucket = decodeURIComponent(rest.slice(0, firstSlash));
+  const prefix = rest.slice(firstSlash + 1).split('/').map(p => p ? decodeURIComponent(p) : '').join('/');
+  return { bucket, prefix };
+}
+
 function _navigateHash(hash, pushState) {
   if (hash.startsWith('gcs/')) {
-    const bucket = decodeURIComponent(hash.slice(4));
+    const { bucket, prefix } = _parseGCSHash(hash);
     showTab('gcs', false);
-    loadGCSObjects(bucket, pushState);
+    loadGCSObjects(bucket, prefix, pushState);
   } else {
     showTab(hash || 'overview', false);
   }
@@ -155,7 +168,7 @@ function _navigateHash(hash, pushState) {
 window.addEventListener('popstate', e => {
   if (e.state && e.state.bucket) {
     showTab('gcs', false);
-    loadGCSObjects(e.state.bucket, false);
+    loadGCSObjects(e.state.bucket, e.state.prefix || '', false);
   } else {
     const tab = (e.state && e.state.tab) || location.hash.slice(1) || 'overview';
     showTab(tab, false);
@@ -245,6 +258,7 @@ function _gcsSortIcon(state, field) {
 
 async function loadGCS(pushState = true) {
   _gcs.bucket = null;
+  _gcs.prefix = '';
   if (pushState) history.pushState({ tab: 'gcs' }, '', '#gcs');
   $('gcs-nav').style.display = 'none';
   $('gcs-content').innerHTML = '<div class="loading">Loading buckets&hellip;</div>';
@@ -299,20 +313,63 @@ function renderGCSBuckets() {
 
 // ── Objects ──
 
-async function loadGCSObjects(bucket, pushState = true) {
+function _gcsHash(bucket, prefix) {
+  const b = encodeURIComponent(bucket);
+  if (!prefix) return `gcs/${b}`;
+  const p = prefix.split('/').map(s => s ? encodeURIComponent(s) : '').join('/');
+  return `gcs/${b}/${p}`;
+}
+
+function _updateGCSBreadcrumb(bucket, prefix) {
+  $('gcs-nav').style.display = 'flex';
+  let html = `<a onclick="loadGCS()">Buckets</a> <span>&#8250;</span>`;
+  if (prefix) {
+    html += ` <a onclick="navigateGCSFolder('')">${esc(bucket)}</a>`;
+    const parts = prefix.split('/').filter(Boolean);
+    let cum = '';
+    for (let i = 0; i < parts.length; i++) {
+      cum += parts[i] + '/';
+      if (i < parts.length - 1) {
+        html += ` <span>&#8250;</span> <a onclick="navigateGCSFolder(${_q(cum)})">${esc(parts[i])}</a>`;
+      } else {
+        html += ` <span>&#8250;</span> ${esc(parts[i])}`;
+      }
+    }
+  } else {
+    html += ` ${esc(bucket)}`;
+  }
+  $('gcs-nav').innerHTML = html;
+}
+
+async function loadGCSObjects(bucket, prefix = '', pushState = true) {
+  const bucketChanged = _gcs.bucket !== bucket;
   _gcs.bucket = bucket;
+  _gcs.prefix = prefix;
   _gcs.page = 0;
   _gcs.oSort = { f: 'name', d: 1 };
-  if (pushState) history.pushState({ tab: 'gcs', bucket }, '', '#gcs/' + encodeURIComponent(bucket));
-  $('gcs-nav').style.display = 'flex';
-  $('gcs-nav').innerHTML = `<a onclick="loadGCS()">Buckets</a> <span>&#8250;</span> ${esc(bucket)}`;
-  $('gcs-content').innerHTML = '<div class="loading">Loading objects&hellip;</div>';
-  try {
-    _gcs.objects = await api('/api/gcs/objects?' + new URLSearchParams({ bucket }));
-    renderGCSObjects();
-  } catch (e) {
-    $('gcs-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
+
+  if (pushState) history.pushState({ tab: 'gcs', bucket, prefix }, '', '#' + _gcsHash(bucket, prefix));
+  _updateGCSBreadcrumb(bucket, prefix);
+
+  if (bucketChanged) {
+    $('gcs-content').innerHTML = '<div class="loading">Loading objects&hellip;</div>';
+    try {
+      _gcs.objects = await api('/api/gcs/objects?' + new URLSearchParams({ bucket }));
+    } catch (e) {
+      $('gcs-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
+      return;
+    }
   }
+  renderGCSObjects();
+}
+
+function navigateGCSFolder(prefix) {
+  _gcs.prefix = prefix;
+  _gcs.page = 0;
+  const bucket = _gcs.bucket;
+  history.pushState({ tab: 'gcs', bucket, prefix }, '', '#' + _gcsHash(bucket, prefix));
+  _updateGCSBreadcrumb(bucket, prefix);
+  renderGCSObjects();
 }
 
 function sortGCSObjects(field) {
@@ -324,9 +381,7 @@ function sortGCSObjects(field) {
 }
 
 function gcsChangePage(delta) {
-  const ps = _gcs.pageSize === 'all' ? _gcs.objects.length || 1 : _gcs.pageSize;
-  const maxPage = Math.max(0, Math.ceil(_gcs.objects.length / ps) - 1);
-  _gcs.page = Math.max(0, Math.min(_gcs.page + delta, maxPage));
+  _gcs.page = Math.max(0, _gcs.page + delta);
   renderGCSObjects();
 }
 
@@ -338,15 +393,33 @@ function gcsSetPageSize(val) {
 
 function renderGCSObjects() {
   const bucket = _gcs.bucket;
+  const prefix = _gcs.prefix || '';
   const s = _gcs.oSort;
-  const sorted = [..._gcs.objects].sort((a, b) => _gcsCmp(a, b, s.f, s.d));
-  const total = sorted.length;
 
-  const ps = _gcs.pageSize === 'all' ? (total || 1) : _gcs.pageSize;
-  const maxPage = Math.max(0, Math.ceil(total / ps) - 1);
+  // Partition objects at current prefix level into virtual folders and files
+  const folderSet = new Set();
+  const filesAtLevel = [];
+  for (const o of _gcs.objects) {
+    if (!o.name.startsWith(prefix)) continue;
+    const rel = o.name.slice(prefix.length);
+    if (!rel) continue; // skip phantom "folder" objects
+    const slashIdx = rel.indexOf('/');
+    if (slashIdx === -1) {
+      filesAtLevel.push(o);
+    } else {
+      folderSet.add(rel.slice(0, slashIdx));
+    }
+  }
+
+  const folders = [...folderSet].sort();
+  const sortedFiles = [...filesAtLevel].sort((a, b) => _gcsCmp(a, b, s.f, s.d));
+  const fileTotal = sortedFiles.length;
+
+  const ps = _gcs.pageSize === 'all' ? (fileTotal || 1) : _gcs.pageSize;
+  const maxPage = Math.max(0, Math.ceil(fileTotal / ps) - 1);
   _gcs.page = Math.min(_gcs.page, maxPage);
   const start = _gcs.page * ps;
-  const page  = sorted.slice(start, start + ps);
+  const pageFiles = sortedFiles.slice(start, start + ps);
 
   const th = (label, field, extra = '') => {
     const { cls, icon } = _gcsSortIcon(s, field);
@@ -354,9 +427,23 @@ function renderGCSObjects() {
   };
 
   let rows = '';
-  for (const o of page) {
+
+  // Folder rows (always first, no sort/pagination)
+  for (const folder of folders) {
+    const folderPrefix = prefix + folder + '/';
     rows += `<tr>
-      <td class="mono">${esc(o.name)}</td>
+      <td colspan="2"><button class="btn-link" style="gap:.35rem" onclick="navigateGCSFolder(${_q(folderPrefix)})">&#128193; ${esc(folder)}/</button></td>
+      <td class="dim">&mdash;</td>
+      <td class="dim">&mdash;</td>
+      <td></td>
+    </tr>`;
+  }
+
+  // File rows
+  for (const o of pageFiles) {
+    const relName = o.name.slice(prefix.length);
+    rows += `<tr>
+      <td class="mono">${esc(relName)}</td>
       <td class="dim" style="white-space:nowrap">${humanSize(o.size)}</td>
       <td class="dim">${esc(o.contentType || '')}</td>
       <td class="dim" style="white-space:nowrap">${o.updated ? o.updated.substring(0, 19).replace('T', ' ') : '&mdash;'}</td>
@@ -364,30 +451,39 @@ function renderGCSObjects() {
     </tr>`;
   }
 
+  const totalItems = folders.length + fileTotal;
+  const from = fileTotal === 0 ? 0 : start + 1;
+  const to   = Math.min(start + ps, fileTotal);
+  const fileInfo = fileTotal === 0
+    ? (folders.length ? '' : 'No objects')
+    : `${from}–${to} of ${fileTotal} file${fileTotal !== 1 ? 's' : ''}`;
+  const showPager = fileTotal > 25;
+
   const pageSizeOpts = ['25', '50', '100', 'all'].map(v => {
     const cur = _gcs.pageSize === (v === 'all' ? 'all' : parseInt(v, 10));
     return `<option value="${v}"${cur ? ' selected' : ''}>${v === 'all' ? 'All' : v} / page</option>`;
   }).join('');
 
-  const from = total === 0 ? 0 : start + 1;
-  const to   = Math.min(start + ps, total);
-  const pageInfo = total === 0 ? 'No objects' : `${from}–${to} of ${total} object${total !== 1 ? 's' : ''}`;
-  const showPager = total > 25;
-
   const pagination = showPager ? `
     <div class="pagination">
-      <span class="page-info">${pageInfo}</span>
+      <span class="page-info">${fileInfo}</span>
       <button class="btn btn-ghost" onclick="gcsChangePage(-1)"${_gcs.page === 0 ? ' disabled' : ''}>‹ Prev</button>
       <button class="btn btn-ghost" onclick="gcsChangePage(1)"${_gcs.page >= maxPage ? ' disabled' : ''}>Next ›</button>
       <select onchange="gcsSetPageSize(this.value)">${pageSizeOpts}</select>
     </div>` : '';
 
+  const summary = folders.length && fileTotal
+    ? `${folders.length} folder${folders.length !== 1 ? 's' : ''}, ${fileTotal} file${fileTotal !== 1 ? 's' : ''}`
+    : folders.length
+      ? `${folders.length} folder${folders.length !== 1 ? 's' : ''}`
+      : `${fileTotal} file${fileTotal !== 1 ? 's' : ''}`;
+
   $('gcs-content').innerHTML = `
     <div class="card">
       <div class="card-header">
         <h2>${esc(bucket)}</h2>
-        <span class="cnt">${total} object${total !== 1 ? 's' : ''}</span>
-        ${!showPager && total > 0 ? `<span class="dim" style="margin-left:.5rem;font-size:.8rem">${pageInfo}</span>` : ''}
+        <span class="cnt">${summary}</span>
+        ${!showPager && fileInfo ? `<span class="dim" style="margin-left:.5rem;font-size:.8rem">${fileInfo}</span>` : ''}
       </div>
       <div style="overflow-x:auto">
         <table>
