@@ -305,6 +305,80 @@ def test_retry_policy_delivers_after_backoff(pubsub_client):
     assert msgs[0]["deliveryAttempt"] == 2
 
 
+def test_filter_attribute_equality(pubsub_client):
+    """Subscription filter on attribute equality drops non-matching messages."""
+    topic = f"{PROJECT}/topics/filter-topic"
+    sub_red = f"{PROJECT}/subscriptions/filter-red"
+    sub_all = f"{PROJECT}/subscriptions/filter-all"
+
+    pubsub_client.put(f"/v1/{topic}")
+    pubsub_client.put(f"/v1/{sub_red}", json={
+        "name": sub_red, "topic": topic,
+        "filter": 'attributes.color = "red"',
+    })
+    pubsub_client.put(f"/v1/{sub_all}", json={"name": sub_all, "topic": topic})
+
+    def _publish(color: str) -> None:
+        data = base64.b64encode(color.encode()).decode()
+        pubsub_client.post(f"/v1/{topic}:publish", json={
+            "messages": [{"data": data, "attributes": {"color": color}}]
+        })
+
+    _publish("red")
+    _publish("blue")
+
+    # sub_red should only have 1 message (red)
+    r = pubsub_client.post(f"/v1/{sub_red}:pull", json={"maxMessages": 10})
+    msgs = r.json()["receivedMessages"]
+    assert len(msgs) == 1
+    assert base64.b64decode(msgs[0]["message"]["data"]) == b"red"
+
+    # sub_all should have both
+    r = pubsub_client.post(f"/v1/{sub_all}:pull", json={"maxMessages": 10})
+    assert len(r.json()["receivedMessages"]) == 2
+
+
+def test_filter_has_prefix(pubsub_client):
+    """hasPrefix filter passes messages whose attribute starts with the given prefix."""
+    topic = f"{PROJECT}/topics/prefix-topic"
+    sub = f"{PROJECT}/subscriptions/prefix-sub"
+
+    pubsub_client.put(f"/v1/{topic}")
+    pubsub_client.put(f"/v1/{sub}", json={
+        "name": sub, "topic": topic,
+        "filter": 'hasPrefix(attributes.env, "prod")',
+    })
+
+    def _publish(env: str) -> None:
+        pubsub_client.post(f"/v1/{topic}:publish", json={
+            "messages": [{"data": "dA==", "attributes": {"env": env}}]
+        })
+
+    _publish("prod-us")
+    _publish("prod-eu")
+    _publish("staging")
+
+    r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 10})
+    assert len(r.json()["receivedMessages"]) == 2
+
+
+def test_filter_not_and_or():
+    """Unit test the filter evaluator for NOT, AND, OR."""
+    from localgcp.services.pubsub.filter import matches
+
+    msg_red_large = {"attributes": {"color": "red", "size": "large"}}
+    msg_blue_large = {"attributes": {"color": "blue", "size": "large"}}
+    msg_red_small = {"attributes": {"color": "red", "size": "small"}}
+
+    assert matches('NOT attributes.color = "red"', msg_red_large) is False
+    assert matches('NOT attributes.color = "red"', msg_blue_large) is True
+    assert matches('attributes.color = "red" AND attributes.size = "large"', msg_red_large) is True
+    assert matches('attributes.color = "red" AND attributes.size = "large"', msg_red_small) is False
+    assert matches('attributes.color = "red" OR attributes.color = "blue"', msg_red_large) is True
+    assert matches('attributes.color = "red" OR attributes.color = "blue"', msg_blue_large) is True
+    assert matches('attributes.color = "green" OR attributes.color = "blue"', msg_red_large) is False
+
+
 def test_delete_topic_removes_subscriptions(pubsub_client):
     topic = f"{PROJECT}/topics/del-topic"
     sub = f"{PROJECT}/subscriptions/del-sub"

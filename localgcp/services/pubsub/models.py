@@ -37,6 +37,7 @@ class SubscriptionModel(BaseModel):
     enableMessageOrdering: bool = False
     deadLetterPolicy: DeadLetterPolicy | None = None
     retryPolicy: RetryPolicy | None = None
+    filter: str = ""
 
 
 class PubsubMessage(BaseModel):

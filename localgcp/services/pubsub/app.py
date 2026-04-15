@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from localgcp.core.errors import GCPError, add_gcp_exception_handler
 from localgcp.core.middleware import add_request_logging
 from localgcp.services.pubsub import store as ps_store
+from localgcp.services.pubsub.filter import matches as filter_matches
 from localgcp.services.pubsub.models import (
     AcknowledgeRequest,
     ModifyAckDeadlineRequest,
@@ -144,6 +145,9 @@ async def publish(
             if sub.get("topic") != full_name:
                 continue
             sub_name = sub["name"]
+            # Apply subscription-level message filter
+            if not filter_matches(sub.get("filter", ""), msg):
+                continue
             push_endpoint = (sub.get("pushConfig") or {}).get("pushEndpoint", "")
             ps_store.ensure_queue(sub_name)
             ps_store.enqueue(sub_name, msg)
