@@ -19,6 +19,7 @@ services:
       - LOCALGCP_DATA_DIR=/data
     volumes:
       - localgcp-data:/data
+      - ./localgcp:/app/localgcp
     restart: unless-stopped
 
 volumes:
