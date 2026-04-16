@@ -42,6 +42,11 @@ def _types():
     return t
 
 
+def _schema_types():
+    from google.pubsub_v1.types import schema as st
+    return st
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
@@ -60,15 +65,31 @@ def _ser_empty(e) -> bytes:
 
 def _topic_to_proto(data: dict):
     t = _types()
-    return t.Topic(name=data["name"], labels=data.get("labels", {}))
+    st = _schema_types()
+    topic = t.Topic(name=data["name"], labels=data.get("labels", {}))
+    ss = data.get("schemaSettings")
+    if ss and ss.get("schema"):
+        enc_str = ss.get("encoding", "ENCODING_UNSPECIFIED")
+        try:
+            enc = st.Encoding[enc_str]
+        except KeyError:
+            enc = st.Encoding.ENCODING_UNSPECIFIED
+        topic.schema_settings = st.SchemaSettings(schema=ss["schema"], encoding=enc)
+    return topic
 
 
 def _topic_to_dict(proto) -> dict:
-    return {
+    d = {
         "name": proto.name,
         "labels": dict(proto.labels),
         "messageRetentionDuration": "604800s",
     }
+    ss = proto.schema_settings
+    if ss and ss.schema:
+        st = _schema_types()
+        enc_name = ss.encoding.name if hasattr(ss.encoding, "name") else str(ss.encoding)
+        d["schemaSettings"] = {"schema": ss.schema, "encoding": enc_name}
+    return d
 
 
 def _sub_to_proto(data: dict):
@@ -394,6 +415,132 @@ async def _seek(request, context):
     return t.SeekResponse()
 
 
+# ---------------------------------------------------------------------------
+# SchemaService handlers
+# ---------------------------------------------------------------------------
+
+def _schema_type_name(type_val) -> str:
+    """Convert a proto-plus Schema.Type enum value to its string name."""
+    if hasattr(type_val, "name"):
+        return type_val.name
+    return str(type_val)
+
+
+def _dict_to_schema_proto(data: dict):
+    st = _schema_types()
+    try:
+        schema_type = st.Schema.Type[data["type"]]
+    except (KeyError, AttributeError):
+        schema_type = st.Schema.Type.TYPE_UNSPECIFIED
+    return st.Schema(name=data["name"], type_=schema_type, definition=data.get("definition", ""))
+
+
+async def _create_schema(request, context):
+    from localgcp.services.pubsub.models import validate_schema_definition
+    st = _schema_types()
+    store = ps_store.get_store()
+    schema_obj = request.schema  # proto-plus field is 'schema', not 'schema_'
+    schema_name = schema_obj.name if schema_obj else ""
+    if not schema_name and request.parent:
+        schema_id = getattr(request, "schema_id", "") or "unnamed"
+        schema_name = f"{request.parent}/schemas/{schema_id}"
+    existing = store.get("schemas", schema_name)
+    if existing:
+        await context.abort(grpc.StatusCode.ALREADY_EXISTS, f"Schema already exists: {schema_name}")
+        return
+    schema_type = _schema_type_name(schema_obj.type_)
+    definition = schema_obj.definition or ""
+    err = validate_schema_definition(schema_type, definition)
+    if err:
+        await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Invalid schema: {err}")
+        return
+    from localgcp.services.pubsub.app import _now
+    data = {
+        "name": schema_name,
+        "type": schema_type,
+        "definition": definition,
+        "revisionId": "1",
+        "revisionCreateTime": _now(),
+    }
+    store.set("schemas", schema_name, data)
+    return _dict_to_schema_proto(data)
+
+
+async def _get_schema_grpc(request, context):
+    store = ps_store.get_store()
+    data = store.get("schemas", request.name)
+    if data is None:
+        await context.abort(grpc.StatusCode.NOT_FOUND, f"Schema not found: {request.name}")
+        return
+    return _dict_to_schema_proto(data)
+
+
+async def _list_schemas_grpc(request, context):
+    st = _schema_types()
+    store = ps_store.get_store()
+    prefix = f"{request.parent}/schemas/"
+    items = [
+        _dict_to_schema_proto(v)
+        for v in store.list("schemas")
+        if v["name"].startswith(prefix)
+    ]
+    offset = int(request.page_token) if request.page_token else 0
+    page_size = request.page_size or 100
+    page = items[offset: offset + page_size]
+    next_token = str(offset + page_size) if offset + page_size < len(items) else ""
+    return st.ListSchemasResponse(schemas=page, next_page_token=next_token)
+
+
+async def _delete_schema_grpc(request, context):
+    store = ps_store.get_store()
+    if not store.delete("schemas", request.name):
+        await context.abort(grpc.StatusCode.NOT_FOUND, f"Schema not found: {request.name}")
+        return
+    return empty_pb2.Empty()
+
+
+async def _validate_schema_grpc(request, context):
+    from localgcp.services.pubsub.models import validate_schema_definition
+    st = _schema_types()
+    schema_obj = request.schema
+    schema_type = _schema_type_name(schema_obj.type_)
+    definition = schema_obj.definition or ""
+    err = validate_schema_definition(schema_type, definition)
+    if err:
+        await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Invalid schema: {err}")
+        return
+    return st.ValidateSchemaResponse()
+
+
+async def _validate_message_grpc(request, context):
+    from localgcp.services.pubsub.models import validate_message_against_schema
+    st = _schema_types()
+    store = ps_store.get_store()
+
+    schema_obj = request.schema
+    if schema_obj and (schema_obj.name or schema_obj.definition):
+        schema_type = _schema_type_name(schema_obj.type_)
+        definition = schema_obj.definition or ""
+    elif request.name:
+        data = store.get("schemas", request.name)
+        if data is None:
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"Schema not found: {request.name}")
+            return
+        schema_type = data["type"]
+        definition = data.get("definition", "")
+    else:
+        await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Either schema or name must be provided")
+        return
+
+    msg_bytes = bytes(request.message) if request.message else b""
+    enc_name = request.encoding.name if hasattr(request.encoding, "name") else str(request.encoding)
+    err = validate_message_against_schema(schema_type, definition, msg_bytes, enc_name)
+    if err:
+        await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Message failed schema validation: {err}")
+        return
+    return st.ValidateMessageResponse()
+
+
 async def _streaming_pull(request_iterator, context):
     """Bidirectional streaming pull.
 
@@ -505,11 +652,13 @@ class _PubSubRpcHandler(grpc.GenericRpcHandler):
 
     def __init__(self):
         t = _types()
+        st = _schema_types()
         _E = empty_pb2.Empty
         _deser_empty = lambda b: _E()  # noqa: E731
 
         _p = "/google.pubsub.v1.Publisher/"
         _s = "/google.pubsub.v1.Subscriber/"
+        _sc = "/google.pubsub.v1.SchemaService/"
 
         self._map: dict[str, grpc.RpcMethodHandler] = {
             # Publisher
@@ -623,6 +772,37 @@ class _PubSubRpcHandler(grpc.GenericRpcHandler):
                 _seek,
                 request_deserializer=t.SeekRequest.deserialize,
                 response_serializer=t.SeekResponse.serialize,
+            ),
+            # SchemaService
+            _sc + "CreateSchema": grpc.unary_unary_rpc_method_handler(
+                _create_schema,
+                request_deserializer=st.CreateSchemaRequest.deserialize,
+                response_serializer=st.Schema.serialize,
+            ),
+            _sc + "GetSchema": grpc.unary_unary_rpc_method_handler(
+                _get_schema_grpc,
+                request_deserializer=st.GetSchemaRequest.deserialize,
+                response_serializer=st.Schema.serialize,
+            ),
+            _sc + "ListSchemas": grpc.unary_unary_rpc_method_handler(
+                _list_schemas_grpc,
+                request_deserializer=st.ListSchemasRequest.deserialize,
+                response_serializer=st.ListSchemasResponse.serialize,
+            ),
+            _sc + "DeleteSchema": grpc.unary_unary_rpc_method_handler(
+                _delete_schema_grpc,
+                request_deserializer=st.DeleteSchemaRequest.deserialize,
+                response_serializer=_ser_empty,
+            ),
+            _sc + "ValidateSchema": grpc.unary_unary_rpc_method_handler(
+                _validate_schema_grpc,
+                request_deserializer=st.ValidateSchemaRequest.deserialize,
+                response_serializer=st.ValidateSchemaResponse.serialize,
+            ),
+            _sc + "ValidateMessage": grpc.unary_unary_rpc_method_handler(
+                _validate_message_grpc,
+                request_deserializer=st.ValidateMessageRequest.deserialize,
+                response_serializer=st.ValidateMessageResponse.serialize,
             ),
         }
 

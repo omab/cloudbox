@@ -1,14 +1,28 @@
 """Pydantic models for Pub/Sub REST API."""
 from __future__ import annotations
 
+import json
 from typing import Any
 from pydantic import BaseModel, Field
+
+
+class SchemaSettings(BaseModel):
+    schema: str = ""  # resource name, e.g. projects/p/schemas/my-schema
+    encoding: str = "ENCODING_UNSPECIFIED"  # JSON or BINARY
+
+
+class CreateTopicBody(BaseModel):
+    """Request body for PUT /v1/projects/{project}/topics/{topic_id}."""
+    labels: dict[str, str] = Field(default_factory=dict)
+    messageRetentionDuration: str = "604800s"
+    schemaSettings: SchemaSettings | None = None
 
 
 class TopicModel(BaseModel):
     name: str
     labels: dict[str, str] = Field(default_factory=dict)
     messageRetentionDuration: str = "604800s"  # 7 days
+    schemaSettings: SchemaSettings | None = None
 
 
 class PushConfig(BaseModel):
@@ -111,3 +125,88 @@ class CreateSnapshotRequest(BaseModel):
 class SeekRequest(BaseModel):
     time: str = ""        # RFC3339; seek to this point in time
     snapshot: str = ""    # full snapshot resource name
+
+
+# ---------------------------------------------------------------------------
+# Schema
+# ---------------------------------------------------------------------------
+
+class SchemaModel(BaseModel):
+    name: str
+    type: str = "TYPE_UNSPECIFIED"  # AVRO or PROTOCOL_BUFFER
+    definition: str = ""
+    revisionId: str = ""
+    revisionCreateTime: str = ""
+
+
+class SchemaListResponse(BaseModel):
+    schemas: list[SchemaModel] = Field(default_factory=list)
+    nextPageToken: str | None = None
+
+
+class ValidateSchemaRequest(BaseModel):
+    schema: SchemaModel
+
+
+class ValidateMessageRequest(BaseModel):
+    name: str = ""          # schema resource name (alternative to inline schema)
+    schema: SchemaModel | None = None
+    message: str = ""       # base64-encoded bytes
+    encoding: str = "ENCODING_UNSPECIFIED"
+
+
+def validate_schema_definition(schema_type: str, definition: str) -> str | None:
+    """Return an error message, or None if valid."""
+    if schema_type == "AVRO":
+        try:
+            json.loads(definition)
+        except json.JSONDecodeError as e:
+            return f"Invalid Avro schema JSON: {e}"
+        try:
+            import fastavro.schema  # type: ignore[import]
+            fastavro.schema.parse_schema(json.loads(definition))
+        except ImportError:
+            pass
+        except Exception as e:
+            return f"Invalid Avro schema: {e}"
+    # PROTOCOL_BUFFER: accept any definition (no protoc available in emulator)
+    return None
+
+
+def validate_message_against_schema(
+    schema_type: str,
+    definition: str,
+    message_bytes: bytes,
+    encoding: str,
+) -> str | None:
+    """Return an error message, or None if valid."""
+    if schema_type == "AVRO":
+        if encoding in ("JSON", "ENCODING_UNSPECIFIED"):
+            try:
+                json.loads(message_bytes)
+            except Exception as e:
+                return f"Message is not valid JSON: {e}"
+            try:
+                import fastavro.io.parsing  # type: ignore[import]
+                import fastavro
+                import io
+                parsed = fastavro.schema.parse_schema(json.loads(definition))
+                reader = io.BytesIO(message_bytes)
+                fastavro.schemaless_reader(reader, parsed)
+            except ImportError:
+                pass
+            except Exception as e:
+                return f"Message does not conform to Avro schema: {e}"
+        # BINARY: need fastavro to decode; skip if not available
+        elif encoding == "BINARY":
+            try:
+                import fastavro
+                import io
+                parsed = fastavro.schema.parse_schema(json.loads(definition))
+                reader = io.BytesIO(message_bytes)
+                fastavro.schemaless_reader(reader, parsed)
+            except ImportError:
+                pass
+            except Exception as e:
+                return f"Message does not conform to Avro schema (binary): {e}"
+    return None
