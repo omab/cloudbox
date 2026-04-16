@@ -99,6 +99,8 @@ const _tk = { queues: [], qSort: {f:'name',d:1},
 const _bq = { datasets: [], dsSort: {f:'datasetId',d:1},
               dataset: null, tables: [], tbSort: {f:'tableId',d:1} };
 const _sc = { jobs: [], sort: {f:'id',d:1}, pg: {page:0,size:50} };
+const _sp = { instances: [], instance: null, databases: [], database: null, tables: [] };
+const _lg = { entries: [], logs: [], selectedLog: '', selectedSeverity: '' };
 
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
@@ -122,6 +124,8 @@ const loaders = {
   secrets:   loadSecrets,
   tasks:     loadTasks,
   bigquery:  loadBigQuery,
+  spanner:   loadSpanner,
+  logging:   loadLogging,
   scheduler: loadScheduler,
 };
 
@@ -188,7 +192,7 @@ async function loadOverview() {
     const labels = {
       gcs: 'Cloud Storage', pubsub: 'Cloud Pub/Sub',
       firestore: 'Cloud Firestore', secretmanager: 'Secret Manager', tasks: 'Cloud Tasks',
-      bigquery: 'BigQuery', scheduler: 'Cloud Scheduler',
+      bigquery: 'BigQuery', spanner: 'Cloud Spanner', logging: 'Cloud Logging', scheduler: 'Cloud Scheduler',
     };
     let rows = '';
     for (const [svc, info] of Object.entries(d.services || {})) {
@@ -1202,6 +1206,207 @@ async function deleteSchedJob(id) {
     await api(`/api/scheduler/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' });
     await _reloadSc();
   } catch (e) { alert('Delete failed: ' + e.message); }
+}
+
+// ── Cloud Spanner ─────────────────────────────────────────────────────────────
+
+async function loadSpanner() {
+  _sp.instance = null; _sp.database = null;
+  $('spanner-nav').style.display = 'none';
+  $('spanner-content').innerHTML = '<div class="loading">Loading instances&hellip;</div>';
+  try {
+    _sp.instances = await api('/api/spanner/instances');
+    renderSpannerInstances();
+  } catch (e) {
+    $('spanner-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderSpannerInstances() {
+  $('spanner-nav').style.display = 'none';
+  let rows = '';
+  for (const inst of _sp.instances) {
+    rows += `<tr>
+      <td><button class="btn-link" onclick="loadSpannerDatabases(${_q(inst.instanceId)})">${esc(inst.instanceId)}</button></td>
+      <td>${esc(inst.displayName || inst.instanceId)}</td>
+      <td><span class="cnt">${inst.databaseCount}</span></td>
+      <td><span class="badge ${stateClass(inst.state)}">${esc(inst.state)}</span></td>
+    </tr>`;
+  }
+  $('spanner-content').innerHTML = `
+    <div class="card">
+      <div class="card-header"><h2>Instances</h2><span class="cnt">${_sp.instances.length}</span></div>
+      <table>
+        <thead><tr><th>Instance ID</th><th>Display Name</th><th>Databases</th><th>State</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" class="empty">No instances</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+async function loadSpannerDatabases(instanceId) {
+  _sp.instance = instanceId; _sp.database = null;
+  $('spanner-nav').style.display = 'flex';
+  $('spanner-nav').innerHTML = `<a onclick="loadSpanner()">Instances</a> <span>&#8250;</span> ${esc(instanceId)}`;
+  $('spanner-content').innerHTML = '<div class="loading">Loading databases&hellip;</div>';
+  try {
+    _sp.databases = await api('/api/spanner/databases?' + new URLSearchParams({ instance: instanceId }));
+    renderSpannerDatabases();
+  } catch (e) {
+    $('spanner-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderSpannerDatabases() {
+  const inst = _sp.instance;
+  let rows = '';
+  for (const db of _sp.databases) {
+    rows += `<tr>
+      <td><button class="btn-link" onclick="loadSpannerTables(${_q(inst)}, ${_q(db.databaseId)})">${esc(db.databaseId)}</button></td>
+      <td><span class="cnt">${db.tableCount}</span></td>
+      <td><span class="badge ${stateClass(db.state)}">${esc(db.state)}</span></td>
+      <td class="actions"><button class="btn btn-danger" onclick="deleteSpannerDatabase(${_q(inst)}, ${_q(db.databaseId)})">Delete</button></td>
+    </tr>`;
+  }
+  $('spanner-content').innerHTML = `
+    <div class="card">
+      <div class="card-header"><h2>Databases</h2><span class="cnt">${_sp.databases.length}</span></div>
+      <table>
+        <thead><tr><th>Database ID</th><th>Tables</th><th>State</th><th>Actions</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" class="empty">No databases</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+async function loadSpannerTables(instanceId, databaseId) {
+  _sp.instance = instanceId; _sp.database = databaseId;
+  $('spanner-nav').style.display = 'flex';
+  $('spanner-nav').innerHTML = `
+    <a onclick="loadSpanner()">Instances</a> <span>&#8250;</span>
+    <a onclick="loadSpannerDatabases(${_q(instanceId)})">${esc(instanceId)}</a>
+    <span>&#8250;</span> ${esc(databaseId)}`;
+  $('spanner-content').innerHTML = '<div class="loading">Loading tables&hellip;</div>';
+  try {
+    _sp.tables = await api('/api/spanner/tables?' + new URLSearchParams({ instance: instanceId, database: databaseId }));
+    renderSpannerTables();
+  } catch (e) {
+    $('spanner-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderSpannerTables() {
+  let rows = '';
+  for (const t of _sp.tables) {
+    rows += `<tr><td class="mono">${esc(t.tableName)}</td></tr>`;
+  }
+  $('spanner-content').innerHTML = `
+    <div class="card">
+      <div class="card-header"><h2>Tables</h2><span class="cnt">${_sp.tables.length}</span></div>
+      <table>
+        <thead><tr><th>Table Name</th></tr></thead>
+        <tbody>${rows || '<tr><td class="empty">No tables</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+async function deleteSpannerDatabase(instanceId, databaseId) {
+  if (!confirm(`Delete database "${databaseId}" and all its data?`)) return;
+  try {
+    await api('/api/spanner/databases?' + new URLSearchParams({ instance: instanceId, database: databaseId }), { method: 'DELETE' });
+    await loadSpannerDatabases(instanceId);
+  } catch (e) { alert('Delete failed: ' + e.message); }
+}
+
+// ── Cloud Logging ─────────────────────────────────────────────────────────────
+
+const _SEV_CLASS = { DEFAULT:'dim', DEBUG:'dim', INFO:'', NOTICE:'', WARNING:'', ERROR:'', CRITICAL:'', ALERT:'', EMERGENCY:'' };
+const _SEV_COLOR = { DEFAULT:'#9aa0a6', DEBUG:'#9aa0a6', INFO:'#4caf50', NOTICE:'#2196f3',
+  WARNING:'#ff9800', ERROR:'#f44336', CRITICAL:'#b71c1c', ALERT:'#b71c1c', EMERGENCY:'#b71c1c' };
+
+async function loadLogging() {
+  $('logging-content').innerHTML = '<div class="loading">Loading logs&hellip;</div>';
+  try {
+    [_lg.logs, _lg.entries] = await Promise.all([
+      api('/api/logging/logs'),
+      api('/api/logging/entries?' + new URLSearchParams({ limit: 100 })),
+    ]);
+    renderLogging();
+  } catch (e) {
+    $('logging-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+async function filterLogging() {
+  try {
+    const params = { limit: 200 };
+    if (_lg.selectedLog) params.log = _lg.selectedLog;
+    if (_lg.selectedSeverity) params.severity = _lg.selectedSeverity;
+    _lg.entries = await api('/api/logging/entries?' + new URLSearchParams(params));
+    renderLoggingEntries();
+  } catch (e) { alert('Filter failed: ' + e.message); }
+}
+
+async function clearLoggingEntries() {
+  const log = _lg.selectedLog;
+  if (!confirm(log ? `Clear all entries for log "${log}"?` : 'Clear ALL log entries?')) return;
+  try {
+    const params = log ? { log } : {};
+    await api('/api/logging/entries?' + new URLSearchParams(params), { method: 'DELETE' });
+    await loadLogging();
+  } catch (e) { alert('Clear failed: ' + e.message); }
+}
+
+function renderLogging() {
+  const logOpts = ['<option value="">All logs</option>',
+    ..._lg.logs.map(l => `<option value="${esc(l.shortName)}"${_lg.selectedLog === l.shortName ? ' selected' : ''}>${esc(l.shortName)}</option>`)
+  ].join('');
+  const sevOpts = ['DEFAULT','DEBUG','INFO','NOTICE','WARNING','ERROR','CRITICAL'].map(s =>
+    `<option value="${s}"${_lg.selectedSeverity === s ? ' selected' : ''}>${s}</option>`
+  ).join('');
+  $('logging-content').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <h2>Log Entries</h2>
+        <span class="cnt">${_lg.entries.length}</span>
+        <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <select onchange="_lg.selectedLog=this.value;filterLogging()">${logOpts}</select>
+          <select onchange="_lg.selectedSeverity=this.value;filterLogging()">
+            <option value="">All severities</option>${sevOpts}
+          </select>
+          <button class="btn btn-ghost" onclick="loadLogging()">Refresh</button>
+          <button class="btn btn-danger" onclick="clearLoggingEntries()">Clear</button>
+        </div>
+      </div>
+      <div id="logging-entries-table"></div>
+    </div>`;
+  renderLoggingEntries();
+}
+
+function renderLoggingEntries() {
+  let rows = '';
+  for (const e of _lg.entries) {
+    const sev = (e.severity || 'DEFAULT').toUpperCase();
+    const color = _SEV_COLOR[sev] || '';
+    const ts = (e.timestamp || '').substring(0, 19).replace('T', ' ');
+    const logShort = (e.logName || '').split('/logs/').pop();
+    let payload = '';
+    if (e.textPayload) payload = esc(e.textPayload.substring(0, 200));
+    else if (e.jsonPayload) payload = `<span class="mono dim">${esc(JSON.stringify(e.jsonPayload).substring(0, 200))}</span>`;
+    rows += `<tr>
+      <td class="dim mono" style="white-space:nowrap">${esc(ts)}</td>
+      <td style="color:${color};font-weight:500">${esc(sev)}</td>
+      <td class="dim">${esc(logShort)}</td>
+      <td>${payload}</td>
+    </tr>`;
+  }
+  const table = `
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Timestamp</th><th>Severity</th><th>Log</th><th>Message</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" class="empty">No log entries</td></tr>'}</tbody>
+      </table>
+    </div>`;
+  const el = $('logging-entries-table');
+  if (el) el.innerHTML = table;
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

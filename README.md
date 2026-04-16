@@ -5,7 +5,7 @@
 
 A local emulator for Google Cloud Platform services — like LocalStack, but for GCP.
 
-Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, and Cloud Scheduler entirely on your machine, with no real GCP credentials or network access required.
+Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, and Cloud Scheduler entirely on your machine, with no real GCP credentials or network access required.
 
 ## Table of Contents
 
@@ -27,6 +27,8 @@ Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, an
   - [Secret Manager](#secret-manager)
   - [Cloud Tasks](#cloud-tasks)
   - [BigQuery](#bigquery-1)
+  - [Cloud Spanner](#cloud-spanner-1)
+  - [Cloud Logging](#cloud-logging-1)
   - [Cloud Scheduler](#cloud-scheduler-1)
 - [Roadmap](#roadmap)
 
@@ -49,6 +51,8 @@ The feature matrix, test coverage, and architecture reflect real engineering tra
 | Secret Manager     | 8090        | REST            |
 | Cloud Tasks        | 8123        | REST            |
 | BigQuery           | 9050        | REST            |
+| Cloud Spanner      | 9010        | REST            |
+| Cloud Logging      | 9020        | REST            |
 | Cloud Scheduler    | 8091        | REST            |
 | Admin UI           | 8888        | HTTP            |
 
@@ -460,10 +464,53 @@ Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
 | Retry configuration | ❌ | Failed jobs are not retried |
 | Timezone support | 🟡 | Parsed by `croniter`; UTC works reliably, some IANA zones may differ from GCP |
 
+### Cloud Spanner
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Create / get / list / update / delete instance | ✅ | |
+| Create / get / list / delete database | ✅ | Returns LRO (immediately done) |
+| DDL execution (`updateDdl`) | ✅ | CREATE TABLE, DROP TABLE, ALTER TABLE, CREATE INDEX |
+| Get DDL (`getDatabaseDdl`) | ✅ | Returns stored DDL statements |
+| Spanner → DuckDB type mapping | ✅ | STRING, INT64, FLOAT64, BOOL, BYTES, DATE, TIMESTAMP, NUMERIC, JSON, ARRAY |
+| `INTERLEAVE IN PARENT` clause | ✅ | Silently stripped — no parent-child enforcement |
+| Sessions: create, get, delete, batchCreate | ✅ | |
+| Transactions: beginTransaction, rollback | ✅ | No real isolation — local dev only |
+| Mutations: insert, update, insertOrUpdate, replace, delete | ✅ | All mutation types supported |
+| `commit` with `singleUseTransaction` | ✅ | |
+| `executeSql` | ✅ | SELECT and DML; `@param_name` parameters |
+| `executeStreamingSql` | ✅ | Returns newline-delimited JSON PartialResultSet |
+| `executeBatchDml` | ✅ | Per-statement row counts returned |
+| `read` (key-based reads) | ✅ | `keys`, `all: true`, key ranges |
+| `streamingRead` | ✅ | Same as read but streaming response |
+| Operations (`GET .../operations/{id}`) | ✅ | Always returns `done: true` |
+| Instance configs (stub) | ✅ | Returns one regional config |
+| True MVCC / read isolation | ❌ | All reads see latest committed state |
+| Partitioned reads / DML | ❌ | |
+| Mutation groups (atomic transactions across mutations) | 🟡 | Applied sequentially, no atomicity guarantee |
+
+### Cloud Logging
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Write log entries (`entries:write`) | ✅ | Batch writes; default logName/resource/labels applied |
+| List log entries (`entries:list`) | ✅ | Pagination via `pageToken` |
+| Filter: `logName=`, `severity>=`, `timestamp>=`, `resource.type=` | ✅ | |
+| List logs (`GET /v2/projects/{project}/logs`) | ✅ | Returns distinct log names |
+| Delete log | ✅ | Deletes all entries with matching logName |
+| Sinks: create, get, list, update, delete | ✅ | `writerIdentity` auto-set |
+| Log-based metrics: create, get, list, update, delete | ✅ | |
+| Auto-fill `timestamp` and `insertId` on write | ✅ | |
+| Cloud Monitoring: write time series | ✅ | Stores points; no aggregation |
+| Cloud Monitoring: metric descriptors (stub) | ✅ | |
+| Complex filter expressions (`AND`, `OR`, `NOT`) | ❌ | Simple equality / comparison only |
+| Log exclusions | ❌ | |
+| Log views | ❌ | |
+| Log buckets | ❌ | |
+| Monitored resource metadata | ❌ | Stored as-is; not validated |
+
 ---
 
 ## Roadmap
 
-- Spanner
-- Cloud Logging / Monitoring
 - Vertex AI

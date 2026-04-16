@@ -26,6 +26,8 @@ _SERVICES = [
     ("secretmanager", "Secret Manager",   lambda: settings.secretmanager_port),
     ("tasks",         "Cloud Tasks",      lambda: settings.tasks_port),
     ("bigquery",      "BigQuery",         lambda: settings.bigquery_port),
+    ("spanner",       "Cloud Spanner",    lambda: settings.spanner_port),
+    ("logging",       "Cloud Logging",    lambda: settings.logging_port),
     ("scheduler",     "Cloud Scheduler",  lambda: settings.scheduler_port),
     ("admin",         "Admin UI",         lambda: settings.admin_port),
 ]
@@ -38,6 +40,8 @@ def _build_configs() -> list[tuple[str, uvicorn.Config]]:
     from localgcp.services.secretmanager.app import app as secretmanager_app
     from localgcp.services.tasks.app import app as tasks_app
     from localgcp.services.bigquery.app import app as bigquery_app
+    from localgcp.services.spanner.app import app as spanner_app
+    from localgcp.services.logging.app import app as logging_app
     from localgcp.services.scheduler.app import app as scheduler_app
     from localgcp.admin.app import app as admin_app
 
@@ -48,6 +52,8 @@ def _build_configs() -> list[tuple[str, uvicorn.Config]]:
         "secretmanager": secretmanager_app,
         "tasks": tasks_app,
         "bigquery": bigquery_app,
+        "spanner": spanner_app,
+        "logging": logging_app,
         "scheduler": scheduler_app,
         "admin": admin_app,
     }

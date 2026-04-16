@@ -24,6 +24,8 @@
   <button class="tab-btn" data-tab="secrets">Secret Manager</button>
   <button class="tab-btn" data-tab="tasks">Cloud Tasks</button>
   <button class="tab-btn" data-tab="bigquery">BigQuery</button>
+  <button class="tab-btn" data-tab="spanner">Cloud Spanner</button>
+  <button class="tab-btn" data-tab="logging">Cloud Logging</button>
   <button class="tab-btn" data-tab="scheduler">Cloud Scheduler</button>
 </nav>
 
@@ -63,6 +65,15 @@
 <div id="panel-bigquery" class="panel">
   <div id="bq-nav" class="breadcrumb" style="display:none"></div>
   <div id="bq-content"><div class="loading">Loading&hellip;</div></div>
+</div>
+
+<div id="panel-spanner" class="panel">
+  <div id="spanner-nav" class="breadcrumb" style="display:none"></div>
+  <div id="spanner-content"><div class="loading">Loading&hellip;</div></div>
+</div>
+
+<div id="panel-logging" class="panel">
+  <div id="logging-content"><div class="loading">Loading&hellip;</div></div>
 </div>
 
 <div id="panel-scheduler" class="panel">

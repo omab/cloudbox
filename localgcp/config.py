@@ -40,6 +40,12 @@ class Settings:
     bigquery_port: int = field(
         default_factory=lambda: int(os.environ.get("LOCALGCP_BIGQUERY_PORT", "9050"))
     )
+    spanner_port: int = field(
+        default_factory=lambda: int(os.environ.get("LOCALGCP_SPANNER_PORT", "9010"))
+    )
+    logging_port: int = field(
+        default_factory=lambda: int(os.environ.get("LOCALGCP_LOGGING_PORT", "9020"))
+    )
     scheduler_port: int = field(
         default_factory=lambda: int(os.environ.get("LOCALGCP_SCHEDULER_PORT", "8091"))
     )

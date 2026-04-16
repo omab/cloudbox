@@ -2,7 +2,7 @@
 
 ## Project overview
 
-LocalGCP is a local emulator for GCP services (Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Scheduler). It is written in Python using FastAPI and runs every service as a separate uvicorn server, all started concurrently from a single entry point.
+LocalGCP is a local emulator for GCP services (Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, Cloud Scheduler). It is written in Python using FastAPI and runs every service as a separate uvicorn server, all started concurrently from a single entry point.
 
 **Stack:** Python 3.12+, FastAPI, uvicorn, Pydantic v2, grpcio, DuckDB, croniter, uv (package manager)
 
@@ -25,7 +25,7 @@ docker compose up
 uv run pytest tests/
 ```
 
-All 108 tests should pass. Tests use `pytest-asyncio` with `asyncio_mode = "auto"` (set in `pyproject.toml`). No external services required — each test file creates its own in-process test client.
+All 406 tests should pass. Tests use `pytest-asyncio` with `asyncio_mode = "auto"` (set in `pyproject.toml`). No external services required — each test file creates its own in-process test client.
 
 ## Project layout
 
@@ -50,6 +50,12 @@ localgcp/
       app.py                FastAPI routes
       models.py             Pydantic models
       engine.py             BigQueryEngine wrapping DuckDB (no NamespacedStore)
+    spanner/                Cloud Spanner via DuckDB (port 9010)
+      app.py                FastAPI routes
+      engine.py             SpannerEngine wrapping DuckDB (no NamespacedStore)
+    logging/                Cloud Logging + Cloud Monitoring (port 9020)
+      app.py                FastAPI routes (v2 Logging + v3 Monitoring)
+      store.py              NamespacedStore wrapper
     scheduler/              Cloud Scheduler (port 8091)
       app.py                FastAPI routes
       models.py             Pydantic models
@@ -77,7 +83,7 @@ localgcp/services/<name>/
     store.py    Thin wrapper around NamespacedStore
 ```
 
-BigQuery uses an `engine.py` module wrapping DuckDB instead of a `NamespacedStore`. Cloud Scheduler adds a `worker.py` for the background dispatch loop.
+BigQuery and Cloud Spanner use an `engine.py` module wrapping DuckDB instead of a `NamespacedStore`. Cloud Scheduler adds a `worker.py` for the background dispatch loop. Cloud Logging uses a standard `NamespacedStore` (entries are append-only structured records).
 
 When adding a new service:
 1. Create the directory and three files above.

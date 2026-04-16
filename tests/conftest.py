@@ -8,6 +8,8 @@ from localgcp.services.firestore.app import app as firestore_app
 from localgcp.services.secretmanager.app import app as secretmanager_app
 from localgcp.services.tasks.app import app as tasks_app
 from localgcp.services.bigquery.app import app as bigquery_app
+from localgcp.services.spanner.app import app as spanner_app
+from localgcp.services.logging.app import app as logging_app
 from localgcp.services.scheduler.app import app as scheduler_app
 
 
@@ -20,6 +22,8 @@ def reset_stores():
     from localgcp.services.secretmanager.store import get_store as sm_store
     from localgcp.services.tasks.store import get_store as tasks_store
     from localgcp.services.bigquery.engine import get_engine as bq_engine
+    from localgcp.services.spanner.engine import get_engine as spanner_engine
+    from localgcp.services.logging.store import get_store as logging_store
     from localgcp.services.scheduler.store import get_store as scheduler_store
 
     gcs_store().reset()
@@ -32,6 +36,8 @@ def reset_stores():
     sm_store().reset()
     tasks_store().reset()
     bq_engine().reset()
+    spanner_engine().reset()
+    logging_store().reset()
     scheduler_store().reset()
     yield
 
@@ -64,6 +70,16 @@ def tasks_client():
 @pytest.fixture
 def bq_client():
     return TestClient(bigquery_app)
+
+
+@pytest.fixture
+def spanner_client():
+    return TestClient(spanner_app)
+
+
+@pytest.fixture
+def logging_client():
+    return TestClient(logging_app)
 
 
 @pytest.fixture

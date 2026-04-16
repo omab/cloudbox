@@ -46,6 +46,19 @@ def _get_services() -> dict:
         for d in bq_datasets
     )
 
+    from localgcp.services.logging.store import get_store as logging_store
+    ls = logging_store()
+    log_entry_count = len(ls.list("entries"))
+    log_sink_count = len(ls.list("sinks"))
+
+    from localgcp.services.spanner.engine import get_engine as spanner_get_engine
+    sp = spanner_get_engine()
+    sp_instances = sp.list_instances(settings.default_project)
+    sp_db_count = sum(
+        len(sp.list_databases(settings.default_project, inst["name"].rsplit("/", 1)[-1]))
+        for inst in sp_instances
+    )
+
     from localgcp.services.scheduler.store import get_store as scheduler_store
     sched = scheduler_store()
     sched_jobs = sched.list("jobs")
@@ -83,6 +96,16 @@ def _get_services() -> dict:
             "port": settings.bigquery_port,
             "stats": {"datasets": len(bq_datasets), "tables": bq_table_count},
             "docs_url": f"http://localhost:{settings.bigquery_port}/docs",
+        },
+        "logging": {
+            "port": settings.logging_port,
+            "stats": {"entries": log_entry_count, "sinks": log_sink_count},
+            "docs_url": f"http://localhost:{settings.logging_port}/docs",
+        },
+        "spanner": {
+            "port": settings.spanner_port,
+            "stats": {"instances": len(sp_instances), "databases": sp_db_count},
+            "docs_url": f"http://localhost:{settings.spanner_port}/docs",
         },
         "scheduler": {
             "port": settings.scheduler_port,
@@ -454,6 +477,106 @@ async def api_bq_delete_table(dataset: str = Query(...), table: str = Query(...)
     return {"deleted": f"{dataset}.{table}"}
 
 
+# ── Cloud Logging ─────────────────────────────────────────────────────────────
+
+@app.get("/api/logging/entries")
+async def api_logging_entries(
+    log: str = Query(default=""),
+    severity: str = Query(default=""),
+    limit: int = Query(default=100),
+):
+    from localgcp.services.logging.store import get_store
+    store = get_store()
+    entries = store.list("entries")
+    if log:
+        entries = [e for e in entries if e.get("logName", "").endswith(f"/logs/{log}")]
+    if severity:
+        from localgcp.services.logging.app import _SEVERITY_ORDER
+        min_level = _SEVERITY_ORDER.get(severity.upper(), 0)
+        entries = [e for e in entries if _SEVERITY_ORDER.get(e.get("severity", "DEFAULT").upper(), 0) >= min_level]
+    entries.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
+    return entries[:limit]
+
+
+@app.get("/api/logging/logs")
+async def api_logging_logs():
+    from localgcp.services.logging.store import get_store
+    store = get_store()
+    entries = store.list("entries")
+    log_names = sorted({e.get("logName", "") for e in entries if e.get("logName")})
+    return [{"logName": ln, "shortName": ln.rsplit("/logs/", 1)[-1]} for ln in log_names]
+
+
+@app.delete("/api/logging/entries")
+async def api_logging_clear(log: str = Query(default="")):
+    from localgcp.services.logging.store import get_store
+    store = get_store()
+    if log:
+        all_keys = store.keys("entries")
+        for k in all_keys:
+            v = store.get("entries", k)
+            if v and v.get("logName", "").endswith(f"/logs/{log}"):
+                store.delete("entries", k)
+    else:
+        store.clear_namespace("entries")
+    return {"cleared": log or "all"}
+
+
+# ── Cloud Spanner ─────────────────────────────────────────────────────────────
+
+@app.get("/api/spanner/instances")
+async def api_spanner_instances():
+    from localgcp.services.spanner.engine import get_engine
+    engine = get_engine()
+    instances = engine.list_instances(settings.default_project)
+    result = []
+    for inst in sorted(instances, key=lambda x: x["name"]):
+        instance_id = inst["name"].rsplit("/", 1)[-1]
+        dbs = engine.list_databases(settings.default_project, instance_id)
+        result.append({
+            "instanceId": instance_id,
+            "displayName": inst.get("displayName", instance_id),
+            "state": inst.get("state", "READY"),
+            "databaseCount": len(dbs),
+        })
+    return result
+
+
+@app.get("/api/spanner/databases")
+async def api_spanner_databases(instance: str = Query(...)):
+    from localgcp.services.spanner.engine import get_engine
+    engine = get_engine()
+    dbs = engine.list_databases(settings.default_project, instance)
+    result = []
+    for db in sorted(dbs, key=lambda x: x["name"]):
+        database_id = db["name"].rsplit("/", 1)[-1]
+        tables = engine.list_tables(settings.default_project, instance, database_id)
+        result.append({
+            "databaseId": database_id,
+            "state": db.get("state", "READY"),
+            "tableCount": len(tables),
+        })
+    return result
+
+
+@app.get("/api/spanner/tables")
+async def api_spanner_tables(instance: str = Query(...), database: str = Query(...)):
+    from localgcp.services.spanner.engine import get_engine
+    engine = get_engine()
+    tables = engine.list_tables(settings.default_project, instance, database)
+    return [{"tableName": t} for t in sorted(tables)]
+
+
+@app.delete("/api/spanner/databases")
+async def api_spanner_delete_database(instance: str = Query(...), database: str = Query(...)):
+    from localgcp.services.spanner.engine import get_engine
+    engine = get_engine()
+    found = engine.delete_database(settings.default_project, instance, database)
+    if not found:
+        return JSONResponse(status_code=404, content={"error": "Database not found"})
+    return {"deleted": database}
+
+
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/scheduler/jobs")
@@ -542,7 +665,7 @@ async def reset_service(service: str):
 
 @app.post("/reset")
 async def reset_all():
-    for svc in ("gcs", "pubsub", "firestore", "secretmanager", "tasks", "bigquery", "scheduler"):
+    for svc in ("gcs", "pubsub", "firestore", "secretmanager", "tasks", "bigquery", "spanner", "logging", "scheduler"):
         _reset_one(svc)
     return {"reset": "all"}
 
@@ -568,6 +691,12 @@ def _reset_one(service: str) -> None:
     elif service == "bigquery":
         from localgcp.services.bigquery.engine import get_engine
         get_engine().reset()
+    elif service == "spanner":
+        from localgcp.services.spanner.engine import get_engine
+        get_engine().reset()
+    elif service == "logging":
+        from localgcp.services.logging.store import get_store
+        get_store().reset()
     elif service == "scheduler":
         from localgcp.services.scheduler.store import get_store
         get_store().reset()
