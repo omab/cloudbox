@@ -46,6 +46,16 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["localgcp"]
 
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "activate/",
+    ".venv/",
+    "htmlcov/",
+    "dist/",
+    ".swp",
+    "*.sw*",
+]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 addopts = "--cov=localgcp --cov-report=term-missing --cov-report=html:htmlcov --cov-report=xml"
