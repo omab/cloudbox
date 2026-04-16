@@ -520,3 +520,70 @@ def test_delete_topic_removes_subscriptions(pubsub_client):
 
     r = pubsub_client.get(f"/v1/{sub}")
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Filter edge cases (unit tests)
+# ---------------------------------------------------------------------------
+
+
+def test_filter_invalid_expression_is_fail_open():
+    """A malformed filter expression should be treated as a match (fail-open)."""
+    from localgcp.services.pubsub.filter import matches
+    msg = {"attributes": {"color": "red"}}
+    assert matches("this is not valid filter syntax %%", msg) is True
+
+
+def test_filter_hasprefix():
+    from localgcp.services.pubsub.filter import matches
+    msg_match = {"attributes": {"env": "production-us"}}
+    msg_no = {"attributes": {"env": "staging"}}
+    assert matches('hasPrefix(attributes.env, "production")', msg_match) is True
+    assert matches('hasPrefix(attributes.env, "production")', msg_no) is False
+
+
+def test_filter_unsupported_operator_is_fail_open():
+    from localgcp.services.pubsub.filter import matches
+    # The parser raises on unsupported operators → fail-open
+    msg = {"attributes": {"x": "1"}}
+    assert matches('attributes.x != "1"', msg) is True
+
+
+def test_filter_parenthesized_expression():
+    from localgcp.services.pubsub.filter import matches
+    msg = {"attributes": {"a": "1", "b": "2"}}
+    assert matches('(attributes.a = "1" OR attributes.b = "3") AND attributes.b = "2"', msg) is True
+
+
+# ---------------------------------------------------------------------------
+# Store helpers — snapshot and seek
+# ---------------------------------------------------------------------------
+
+
+def test_create_snapshot_missing_subscription_returns_none():
+    from localgcp.services.pubsub.store import create_snapshot
+    result = create_snapshot("projects/p/snapshots/s", "projects/p/subscriptions/nonexistent")
+    assert result is None
+
+
+def test_retained_count_and_unacked_count(pubsub_client):
+    """Exercise retained_count and unacked_count helpers."""
+    from localgcp.services.pubsub.store import retained_count, unacked_count
+    topic = f"{PROJECT}/topics/cnt-topic"
+    sub = f"{PROJECT}/subscriptions/cnt-sub"
+
+    pubsub_client.put(f"/v1/{topic}", json={"messageRetentionDuration": "3600s"})
+    pubsub_client.put(f"/v1/{sub}", json={"name": sub, "topic": topic})
+
+    # Publish a message
+    pubsub_client.post(f"/v1/{topic}:publish", json={
+        "messages": [{"data": base64.b64encode(b"hi").decode()}]
+    })
+
+    # After publish, topic log should have 1 retained message
+    assert retained_count(topic) == 1
+
+    # Pull without acking → unacked count increases
+    r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
+    assert r.status_code == 200
+    assert unacked_count(sub) == 1

@@ -177,3 +177,60 @@ def test_delete_secret_cascades_versions(sm_client):
 def test_get_missing_secret_returns_404(sm_client):
     r = sm_client.get(f"/v1/projects/{PROJECT}/secrets/nonexistent")
     assert r.status_code == 404
+
+
+def test_create_secret_no_id_returns_400(sm_client):
+    r = sm_client.post(f"/v1/projects/{PROJECT}/secrets", json={})
+    assert r.status_code == 400
+
+
+def test_update_missing_secret_returns_404(sm_client):
+    r = sm_client.patch(
+        f"/v1/projects/{PROJECT}/secrets/no-such-secret",
+        json={"labels": {"env": "test"}},
+    )
+    assert r.status_code == 404
+
+
+def test_delete_missing_secret_returns_404(sm_client):
+    r = sm_client.delete(f"/v1/projects/{PROJECT}/secrets/no-such-secret")
+    assert r.status_code == 404
+
+
+def test_add_version_missing_secret_returns_404(sm_client):
+    r = sm_client.post(
+        f"/v1/projects/{PROJECT}/secrets/no-secret:addVersion",
+        json={"payload": {"data": "dGVzdA=="}},
+    )
+    assert r.status_code == 404
+
+
+def test_get_missing_version_returns_404(sm_client):
+    sm_client.post(
+        f"/v1/projects/{PROJECT}/secrets?secretId=ver-secret",
+        json={"replication": {"automatic": {}}},
+    )
+    r = sm_client.get(f"/v1/projects/{PROJECT}/secrets/ver-secret/versions/99")
+    assert r.status_code == 404
+
+
+def test_access_missing_version_returns_404(sm_client):
+    sm_client.post(
+        f"/v1/projects/{PROJECT}/secrets?secretId=acc-secret",
+        json={"replication": {"automatic": {}}},
+    )
+    r = sm_client.post(
+        f"/v1/projects/{PROJECT}/secrets/acc-secret/versions/99:access",
+    )
+    assert r.status_code == 404
+
+
+def test_disable_missing_version_returns_404(sm_client):
+    sm_client.post(
+        f"/v1/projects/{PROJECT}/secrets?secretId=dis-secret",
+        json={"replication": {"automatic": {}}},
+    )
+    r = sm_client.post(
+        f"/v1/projects/{PROJECT}/secrets/dis-secret/versions/99:disable",
+    )
+    assert r.status_code == 404

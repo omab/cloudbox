@@ -495,3 +495,44 @@ def test_list_tabledata_pagination(bq_client):
     body = r.json()
     assert len(body["rows"]) == 3
     assert body.get("pageToken")  # more pages available
+
+
+def test_create_dataset_no_id_returns_400(bq_client):
+    r = bq_client.post(f"{BASE}/datasets", json={})
+    assert r.status_code == 400
+
+
+def test_delete_missing_dataset_returns_404(bq_client):
+    r = bq_client.delete(f"{BASE}/datasets/no-such-ds")
+    assert r.status_code == 404
+
+
+def test_create_table_no_id_returns_400(bq_client):
+    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"datasetId": "myds2"}})
+    r = bq_client.post(f"{BASE}/datasets/myds2/tables", json={})
+    assert r.status_code == 400
+
+
+def test_delete_missing_table_returns_404(bq_client):
+    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"datasetId": "myds3"}})
+    r = bq_client.delete(f"{BASE}/datasets/myds3/tables/no-table")
+    assert r.status_code == 404
+
+
+def test_insert_job_no_sql_returns_400(bq_client):
+    r = bq_client.post(f"{BASE}/jobs", json={"configuration": {"query": {}}})
+    assert r.status_code == 400
+
+
+def test_sync_query_no_sql_returns_400(bq_client):
+    r = bq_client.post(f"{BASE}/queries", json={})
+    assert r.status_code == 400
+
+
+def test_sync_query_errored_returns_empty_result(bq_client):
+    """An invalid SQL in sync query returns a jobComplete response with no rows."""
+    r = bq_client.post(f"{BASE}/queries", json={"query": "SELECT * FROM nonexistent_table_xyz"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["jobComplete"] is True
+    assert body["rows"] == []

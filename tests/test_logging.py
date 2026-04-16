@@ -414,3 +414,200 @@ def test_explicit_insert_id_preserved(logging_client):
     r = _list(logging_client)
     entries = r.json()["entries"]
     assert any(e.get("insertId") == "my-custom-id" for e in entries)
+
+
+# ---------------------------------------------------------------------------
+# Write — edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_write_entry_without_log_name_is_skipped(logging_client):
+    """Entries with no logName and no default logName should be silently skipped."""
+    r = logging_client.post("/v2/entries:write", json={"entries": [{"textPayload": "no name"}]})
+    assert r.status_code == 200
+    r2 = _list(logging_client)
+    assert r2.json().get("entries", []) == []
+
+
+# ---------------------------------------------------------------------------
+# Filter — additional severity operators
+# ---------------------------------------------------------------------------
+
+
+def test_filter_severity_lte(logging_client):
+    """severity <= DEBUG matches DEBUG but not INFO."""
+    _write(logging_client, [
+        {"logName": LOG_NAME, "severity": "DEBUG", "textPayload": "dbg"},
+        {"logName": LOG_NAME, "severity": "INFO", "textPayload": "inf"},
+    ])
+    r = _list(logging_client, filter_str='severity <= "DEBUG"')
+    entries = r.json()["entries"]
+    assert all(e["severity"] == "DEBUG" for e in entries)
+
+
+def test_filter_severity_gt(logging_client):
+    """severity > INFO matches WARNING and above."""
+    _write(logging_client, [
+        {"logName": LOG_NAME, "severity": "INFO", "textPayload": "inf"},
+        {"logName": LOG_NAME, "severity": "WARNING", "textPayload": "warn"},
+        {"logName": LOG_NAME, "severity": "ERROR", "textPayload": "err"},
+    ])
+    r = _list(logging_client, filter_str='severity > "INFO"')
+    entries = r.json()["entries"]
+    assert len(entries) == 2
+    assert all(e["severity"] in ("WARNING", "ERROR") for e in entries)
+
+
+def test_filter_severity_lt(logging_client):
+    """severity < WARNING matches INFO and below."""
+    _write(logging_client, [
+        {"logName": LOG_NAME, "severity": "DEBUG", "textPayload": "d"},
+        {"logName": LOG_NAME, "severity": "INFO", "textPayload": "i"},
+        {"logName": LOG_NAME, "severity": "WARNING", "textPayload": "w"},
+    ])
+    r = _list(logging_client, filter_str='severity < "WARNING"')
+    entries = r.json()["entries"]
+    assert len(entries) == 2
+    assert all(e["severity"] in ("DEBUG", "INFO") for e in entries)
+
+
+def test_filter_severity_eq(logging_client):
+    """severity = INFO matches exactly INFO."""
+    _write(logging_client, [
+        {"logName": LOG_NAME, "severity": "INFO", "textPayload": "i"},
+        {"logName": LOG_NAME, "severity": "WARNING", "textPayload": "w"},
+    ])
+    r = _list(logging_client, filter_str='severity = "INFO"')
+    entries = r.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["severity"] == "INFO"
+
+
+def test_filter_timestamp_lte(logging_client):
+    """timestamp <= filter."""
+    ts = "2025-06-01T00:00:00Z"
+    _write(logging_client, [
+        {"logName": LOG_NAME, "timestamp": "2025-05-01T00:00:00Z", "textPayload": "before"},
+        {"logName": LOG_NAME, "timestamp": "2025-07-01T00:00:00Z", "textPayload": "after"},
+    ])
+    r = _list(logging_client, filter_str=f'timestamp <= "{ts}"')
+    entries = r.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["textPayload"] == "before"
+
+
+def test_filter_timestamp_gt(logging_client):
+    """timestamp > filter."""
+    ts = "2025-06-01T00:00:00Z"
+    _write(logging_client, [
+        {"logName": LOG_NAME, "timestamp": "2025-05-01T00:00:00Z", "textPayload": "before"},
+        {"logName": LOG_NAME, "timestamp": "2025-07-01T00:00:00Z", "textPayload": "after"},
+    ])
+    r = _list(logging_client, filter_str=f'timestamp > "{ts}"')
+    entries = r.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["textPayload"] == "after"
+
+
+def test_filter_timestamp_lt(logging_client):
+    """timestamp < filter."""
+    ts = "2025-07-01T00:00:00Z"
+    _write(logging_client, [
+        {"logName": LOG_NAME, "timestamp": "2025-05-01T00:00:00Z", "textPayload": "old"},
+        {"logName": LOG_NAME, "timestamp": "2025-07-01T00:00:00Z", "textPayload": "exact"},
+    ])
+    r = _list(logging_client, filter_str=f'timestamp < "{ts}"')
+    entries = r.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["textPayload"] == "old"
+
+
+def test_filter_resource_type(logging_client):
+    """resource.type = filter."""
+    _write(logging_client, [
+        {"logName": LOG_NAME, "resource": {"type": "gce_instance"}, "textPayload": "vm"},
+        {"logName": LOG_NAME, "resource": {"type": "gcs_bucket"}, "textPayload": "bucket"},
+    ])
+    r = _list(logging_client, filter_str='resource.type = "gce_instance"')
+    entries = r.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["textPayload"] == "vm"
+
+
+# ---------------------------------------------------------------------------
+# Sinks — error paths
+# ---------------------------------------------------------------------------
+
+
+def test_create_sink_empty_name_returns_400(logging_client):
+    r = logging_client.post(
+        f"/v2/projects/{PROJECT}/sinks",
+        json={"destination": "storage.googleapis.com/my-bucket"},
+    )
+    assert r.status_code == 400
+
+
+def test_update_missing_sink_returns_404(logging_client):
+    r = logging_client.patch(
+        f"/v2/projects/{PROJECT}/sinks/no-such-sink",
+        json={"destination": "storage.googleapis.com/other"},
+    )
+    assert r.status_code == 404
+
+
+def test_delete_missing_sink_returns_404(logging_client):
+    r = logging_client.delete(f"/v2/projects/{PROJECT}/sinks/no-such-sink")
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Metrics — error paths
+# ---------------------------------------------------------------------------
+
+
+def test_create_metric_empty_name_returns_400(logging_client):
+    r = logging_client.post(
+        f"/v2/projects/{PROJECT}/metrics",
+        json={"filter": 'severity >= ERROR'},
+    )
+    assert r.status_code == 400
+
+
+def test_update_missing_metric_returns_404(logging_client):
+    r = logging_client.patch(
+        f"/v2/projects/{PROJECT}/metrics/no-such-metric",
+        json={"filter": 'severity >= WARNING'},
+    )
+    assert r.status_code == 404
+
+
+def test_delete_missing_metric_returns_404(logging_client):
+    r = logging_client.delete(f"/v2/projects/{PROJECT}/metrics/no-such-metric")
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Time series — query
+# ---------------------------------------------------------------------------
+
+
+def test_query_time_series(logging_client):
+    """Write a time series then query it back."""
+    logging_client.post(
+        f"/v3/projects/{PROJECT}/timeSeries",
+        json={
+            "timeSeries": [{
+                "metric": {"type": "custom.googleapis.com/requests", "labels": {}},
+                "resource": {"type": "global", "labels": {}},
+                "points": [{"interval": {"endTime": "2025-01-01T00:00:00Z"}, "value": {"int64Value": "1"}}],
+            }]
+        },
+    )
+    r = logging_client.post(
+        f"/v3/projects/{PROJECT}/timeSeries:query",
+        json={"query": "fetch global"},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert "timeSeriesData" in data
+    assert len(data["timeSeriesData"]) >= 1

@@ -706,6 +706,14 @@ class SpannerEngine:
             return None
         return {k: v for k, v in meta.items() if not k.startswith("_")}
 
+    def list_sessions(self, project: str, instance_id: str, database_id: str) -> list[dict]:
+        prefix = f"projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/"
+        return [
+            {k: v for k, v in meta.items() if not k.startswith("_")}
+            for name, meta in self._sessions.items()
+            if name.startswith(prefix)
+        ]
+
     def delete_session(self, session_name: str) -> bool:
         if session_name not in self._sessions:
             return False

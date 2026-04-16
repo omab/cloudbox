@@ -205,6 +205,15 @@ async def batch_create_sessions(
 
 
 @app.get(
+    "/v1/projects/{project}/instances/{instance_id}/databases/{database_id}/sessions",
+    status_code=200,
+)
+async def list_sessions(project: str, instance_id: str, database_id: str):
+    sessions = _engine().list_sessions(project, instance_id, database_id)
+    return {"sessions": sessions}
+
+
+@app.get(
     "/v1/projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/{session_id}",
     status_code=200,
 )

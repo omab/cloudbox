@@ -371,3 +371,67 @@ def test_collection_group_query(firestore_client):
         },
     )
     assert len(r.json()) == 2
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage
+# ---------------------------------------------------------------------------
+
+
+def test_run_query_no_structured_query(firestore_client):
+    """POST :runQuery with no structuredQuery returns empty list."""
+    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={})
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_run_query_nested_collection(firestore_client):
+    """Query nested under a parent document via the nested :runQuery endpoint."""
+    firestore_client.post(f"/v1/{DOCS}/items", params={"documentId": "item1"}, json={"fields": {}})
+    firestore_client.post(
+        f"/v1/{DOCS}/items/item1/tags",
+        params={"documentId": "t1"},
+        json={"fields": {"label": {"stringValue": "important"}}},
+    )
+    r = firestore_client.post(
+        f"/v1/projects/local-project/databases/(default)/documents/items/item1/documents:runQuery",
+        json={"structuredQuery": {"from": [{"collectionId": "tags"}]}},
+    )
+    assert r.status_code == 200
+
+
+def test_post_even_path_returns_400(firestore_client):
+    """POST to an even-segment path (document, not collection) returns 400."""
+    r = firestore_client.post(
+        f"/v1/{DOCS}/users/alice",
+        json={"fields": {}},
+    )
+    assert r.status_code == 400
+
+
+def test_commit_delete_field_from_update_mask(firestore_client):
+    """updateMask can remove a field by listing it but not including it in the doc."""
+    firestore_client.post(
+        f"/v1/{DOCS}/items",
+        params={"documentId": "del-field-doc"},
+        json={"fields": {"a": {"stringValue": "x"}, "b": {"stringValue": "y"}}},
+    )
+    r = firestore_client.post(
+        f"/v1/{DB}:commit",
+        json={
+            "writes": [
+                {
+                    "update": {
+                        "name": f"{DOCS}/items/del-field-doc",
+                        "fields": {"a": {"stringValue": "updated"}},
+                    },
+                    "updateMask": {"fieldPaths": ["a", "b"]},  # b not in doc → remove it
+                }
+            ]
+        },
+    )
+    assert r.status_code == 200
+    r2 = firestore_client.get(f"/v1/{DOCS}/items/del-field-doc")
+    fields = r2.json().get("fields", {})
+    assert "a" in fields
+    assert "b" not in fields

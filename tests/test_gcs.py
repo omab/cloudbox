@@ -291,3 +291,75 @@ def test_copy_to_missing_bucket_returns_404(gcs_client):
     )
     r = gcs_client.post("/storage/v1/b/copy-src/o/f.txt/copyTo/b/no-dst/o/f.txt")
     assert r.status_code == 404
+
+
+def test_create_bucket_without_name_returns_400(gcs_client):
+    r = gcs_client.post("/storage/v1/b", json={})
+    assert r.status_code == 400
+
+
+def test_delete_missing_bucket_returns_404(gcs_client):
+    r = gcs_client.delete("/storage/v1/b/no-such-bucket-xyz")
+    assert r.status_code == 404
+
+
+def test_download_missing_object_returns_404(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "dl-bkt"})
+    r = gcs_client.get("/download/storage/v1/b/dl-bkt/o/missing.bin")
+    assert r.status_code == 404
+
+
+def test_copy_missing_source_object_returns_404(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "csrc-bkt"})
+    gcs_client.post("/storage/v1/b", json={"name": "cdst-bkt"})
+    r = gcs_client.post("/storage/v1/b/csrc-bkt/o/ghost.txt/copyTo/b/cdst-bkt/o/copy.txt")
+    assert r.status_code == 404
+
+
+def test_list_objects_missing_bucket_returns_404(gcs_client):
+    r = gcs_client.get("/storage/v1/b/no-bkt/o")
+    assert r.status_code == 404
+
+
+def test_notification_crud(gcs_client):
+    """Create, get, list, and delete notification configs."""
+    gcs_client.post("/storage/v1/b", json={"name": "notif-bkt"})
+
+    # Create
+    r = gcs_client.post(
+        "/storage/v1/b/notif-bkt/notificationConfigs",
+        json={"topic": "projects/p/topics/t", "payload_format": "JSON_API_V1"},
+    )
+    assert r.status_code == 200
+    notif_id = r.json()["id"]
+
+    # Get
+    r2 = gcs_client.get(f"/storage/v1/b/notif-bkt/notificationConfigs/{notif_id}")
+    assert r2.status_code == 200
+
+    # List
+    r3 = gcs_client.get("/storage/v1/b/notif-bkt/notificationConfigs")
+    assert r3.status_code == 200
+
+    # Delete
+    r4 = gcs_client.delete(f"/storage/v1/b/notif-bkt/notificationConfigs/{notif_id}")
+    assert r4.status_code == 204
+
+
+def test_list_notifications_missing_bucket_returns_404(gcs_client):
+    r = gcs_client.get("/storage/v1/b/no-such-bkt/notificationConfigs")
+    assert r.status_code == 404
+
+
+def test_delete_missing_notification_returns_404(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "notif-del-bkt"})
+    r = gcs_client.delete("/storage/v1/b/notif-del-bkt/notificationConfigs/999")
+    assert r.status_code == 404
+
+
+def test_create_notification_missing_bucket_returns_404(gcs_client):
+    r = gcs_client.post(
+        "/storage/v1/b/no-bkt/notificationConfigs",
+        json={"topic": "projects/p/topics/t", "payload_format": "JSON_API_V1"},
+    )
+    assert r.status_code == 404

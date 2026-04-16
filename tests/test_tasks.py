@@ -226,3 +226,54 @@ def test_force_run_task(tasks_client):
     from datetime import datetime, timezone
     sched = datetime.fromisoformat(r2.json()["scheduleTime"].rstrip("Z")).replace(tzinfo=timezone.utc)
     assert sched <= datetime.now(timezone.utc) + timedelta(seconds=5)
+
+
+def test_update_missing_queue_returns_404(tasks_client):
+    r = tasks_client.patch(
+        f"{BASE}/queues/no-such-queue",
+        json={"rateLimits": {"maxDispatchesPerSecond": 5}},
+    )
+    assert r.status_code == 404
+
+
+def test_delete_missing_queue_returns_404(tasks_client):
+    r = tasks_client.delete(f"{BASE}/queues/no-such-queue")
+    assert r.status_code == 404
+
+
+def test_purge_missing_queue_returns_404(tasks_client):
+    r = tasks_client.post(f"{BASE}/queues/no-such-queue:purge")
+    assert r.status_code == 404
+
+
+def test_pause_missing_queue_returns_404(tasks_client):
+    r = tasks_client.post(f"{BASE}/queues/no-such-queue:pause")
+    assert r.status_code == 404
+
+
+def test_resume_missing_queue_returns_404(tasks_client):
+    r = tasks_client.post(f"{BASE}/queues/no-such-queue:resume")
+    assert r.status_code == 404
+
+
+def test_get_missing_task_returns_404(tasks_client):
+    tasks_client.post(
+        f"{BASE}/queues",
+        json={"name": f"projects/{PROJECT}/locations/{LOCATION}/queues/tsk-q"},
+    )
+    r = tasks_client.get(f"{BASE}/queues/tsk-q/tasks/no-such-task")
+    assert r.status_code == 404
+
+
+def test_delete_missing_task_returns_404(tasks_client):
+    tasks_client.post(
+        f"{BASE}/queues",
+        json={"name": f"projects/{PROJECT}/locations/{LOCATION}/queues/del-tsk-q"},
+    )
+    r = tasks_client.delete(f"{BASE}/queues/del-tsk-q/tasks/no-such-task")
+    assert r.status_code == 404
+
+
+def test_list_tasks_missing_queue_returns_404(tasks_client):
+    r = tasks_client.get(f"{BASE}/queues/no-such-queue/tasks")
+    assert r.status_code == 404
