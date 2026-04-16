@@ -38,8 +38,13 @@ jobs:
           name: coverage-html-${{ matrix.python-version }}
           path: htmlcov/
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+      - name: Generate coverage badge
+        if: github.ref == 'refs/heads/main'
+        run: uv run genbadge coverage -i coverage.xml -o coverage.svg
+
+      - name: Commit coverage badge
+        if: github.ref == 'refs/heads/main'
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          files: coverage.xml
-          fail_ci_if_error: false
+          commit_message: "chore: update coverage badge [skip ci]"
+          file_pattern: coverage.svg
