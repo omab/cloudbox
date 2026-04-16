@@ -208,5 +208,7 @@ marimo/_lsp/
 __marimo__/
 
 # Claude
-.claude/
+.claude/*
+!.claude/commands/
+!.claude/commands/*.md
 .*.sw*
