@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SchemaSettings(BaseModel):
-    schema: str = ""  # resource name, e.g. projects/p/schemas/my-schema
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_: str = Field("", alias="schema")  # resource name, e.g. projects/p/schemas/my-schema
     encoding: str = "ENCODING_UNSPECIFIED"  # JSON or BINARY
 
 
@@ -145,12 +147,16 @@ class SchemaListResponse(BaseModel):
 
 
 class ValidateSchemaRequest(BaseModel):
-    schema: SchemaModel
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_: SchemaModel = Field(alias="schema")
 
 
 class ValidateMessageRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str = ""          # schema resource name (alternative to inline schema)
-    schema: SchemaModel | None = None
+    schema_: SchemaModel | None = Field(None, alias="schema")
     message: str = ""       # base64-encoded bytes
     encoding: str = "ENCODING_UNSPECIFIED"
 

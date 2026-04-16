@@ -99,11 +99,11 @@ async def create_topic(project: str, topic_id: str, body: CreateTopicBody | None
         messageRetentionDuration=(body.messageRetentionDuration if body else "604800s"),
         schemaSettings=(body.schemaSettings if body else None),
     )
-    if t.schemaSettings and t.schemaSettings.schema:
-        if not store.exists("schemas", t.schemaSettings.schema):
-            raise GCPError(404, f"Schema not found: {t.schemaSettings.schema}")
-    store.set("topics", full_name, t.model_dump(exclude_none=False))
-    return t.model_dump(exclude_none=True)
+    if t.schemaSettings and t.schemaSettings.schema_:
+        if not store.exists("schemas", t.schemaSettings.schema_):
+            raise GCPError(404, f"Schema not found: {t.schemaSettings.schema_}")
+    store.set("topics", full_name, t.model_dump(by_alias=True, exclude_none=False))
+    return t.model_dump(by_alias=True, exclude_none=True)
 
 
 @app.patch("/v1/projects/{project}/topics/{topic_id}")
@@ -117,12 +117,12 @@ async def update_topic(project: str, topic_id: str, body: CreateTopicBody | None
         if body.labels is not None:
             data["labels"] = body.labels
         if body.schemaSettings is not None:
-            if body.schemaSettings.schema and not store.exists("schemas", body.schemaSettings.schema):
-                raise GCPError(404, f"Schema not found: {body.schemaSettings.schema}")
-            data["schemaSettings"] = body.schemaSettings.model_dump()
+            if body.schemaSettings.schema_ and not store.exists("schemas", body.schemaSettings.schema_):
+                raise GCPError(404, f"Schema not found: {body.schemaSettings.schema_}")
+            data["schemaSettings"] = body.schemaSettings.model_dump(by_alias=True)
         data["messageRetentionDuration"] = body.messageRetentionDuration
     store.set("topics", full_name, data)
-    return TopicModel(**data).model_dump(exclude_none=True)
+    return TopicModel.model_validate(data).model_dump(by_alias=True, exclude_none=True)
 
 
 @app.get("/v1/projects/{project}/topics/{topic_id}")
@@ -139,11 +139,11 @@ async def get_topic(project: str, topic_id: str):
 async def list_topics(project: str, pageSize: int = 100, pageToken: str = ""):
     store = ps_store.get_store()
     prefix = f"projects/{project}/topics/"
-    items = [TopicModel(**v) for v in store.list("topics") if v["name"].startswith(prefix)]
+    items = [TopicModel.model_validate(v) for v in store.list("topics") if v["name"].startswith(prefix)]
     offset = int(pageToken) if pageToken else 0
     page = items[offset: offset + pageSize]
     next_token = str(offset + pageSize) if offset + pageSize < len(items) else None
-    return TopicListResponse(topics=page, nextPageToken=next_token).model_dump(exclude_none=True)
+    return TopicListResponse(topics=page, nextPageToken=next_token).model_dump(by_alias=True, exclude_none=True)
 
 
 @app.delete("/v1/projects/{project}/topics/{topic_id}", status_code=204)
@@ -469,7 +469,7 @@ async def delete_schema(project: str, schema_id: str):
 
 @app.post("/v1/projects/{project}/schemas:validate")
 async def validate_schema_endpoint(project: str, body: ValidateSchemaRequest):
-    err = validate_schema_definition(body.schema.type, body.schema.definition)
+    err = validate_schema_definition(body.schema_.type, body.schema_.definition)
     if err:
         raise GCPError(400, f"Invalid schema: {err}")
     return {}
@@ -480,9 +480,9 @@ async def validate_message_endpoint(project: str, body: ValidateMessageRequest):
     store = ps_store.get_store()
 
     # Resolve schema: inline or by resource name
-    if body.schema:
-        schema_type = body.schema.type
-        definition = body.schema.definition
+    if body.schema_:
+        schema_type = body.schema_.type
+        definition = body.schema_.definition
     elif body.name:
         schema_data = store.get("schemas", body.name)
         if schema_data is None:
