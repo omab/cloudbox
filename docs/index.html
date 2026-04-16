@@ -694,13 +694,13 @@
   <div class="inner">
     <div class="section-label"># Quick Start</div>
     <h2 class="section-title">Up and running in seconds</h2>
-    <p class="section-sub">Choose Docker for zero setup, or run locally with <code>uv</code>.</p>
+    <p class="section-sub">Pull from Docker Hub, compose from source, or run locally with <code>uv</code>.</p>
 
     <div class="steps">
       <div class="step">
-        <div class="step-num">// 01 — Docker</div>
-        <h3>Docker (recommended)</h3>
-        <p>All services and the Admin UI in one command:</p>
+        <div class="step-num">// 01 — docker run</div>
+        <h3>Docker Hub</h3>
+        <p>Pull and run the published image directly — no clone needed:</p>
         <div class="code-window">
           <div class="code-header">
             <div class="dots">
@@ -710,12 +710,37 @@
             </div>
             <span class="code-lang">bash</span>
           </div>
-          <pre><code class="language-bash">docker compose up</code></pre>
+          <pre><code class="language-bash">docker run -p 4443:4443 -p 8080:8080 \
+           -p 8085:8085 -p 8086:8086 \
+           -p 8090:8090 -p 8123:8123 \
+           -p 9050:9050 -p 9010:9010 \
+           -p 9020:9020 -p 8091:8091 \
+           -p 8888:8888 \
+           omab/localgcp:latest</code></pre>
         </div>
         <p style="margin-top:10px">Admin UI → <a href="http://localhost:8888" target="_blank" rel="noopener">http://localhost:8888</a></p>
       </div>
       <div class="step">
-        <div class="step-num">// 02 — Python</div>
+        <div class="step-num">// 02 — Docker Compose</div>
+        <h3>Docker Compose</h3>
+        <p>Clone the repo and start all services with one command:</p>
+        <div class="code-window">
+          <div class="code-header">
+            <div class="dots">
+              <span class="dot" style="background:#f85149"></span>
+              <span class="dot" style="background:#d29922"></span>
+              <span class="dot" style="background:#3fb950"></span>
+            </div>
+            <span class="code-lang">bash</span>
+          </div>
+          <pre><code class="language-bash">git clone https://github.com/omab/localgcp
+cd localgcp
+docker compose up</code></pre>
+        </div>
+        <p style="margin-top:10px">Admin UI → <a href="http://localhost:8888" target="_blank" rel="noopener">http://localhost:8888</a></p>
+      </div>
+      <div class="step">
+        <div class="step-num">// 03 — Python</div>
         <h3>Local Python</h3>
         <p>Requires Python 3.12+ and <a href="https://github.com/astral-sh/uv" target="_blank" rel="noopener">uv</a>.</p>
         <div class="code-window">
@@ -734,7 +759,7 @@ uv run localgcp</code></pre>
         </div>
       </div>
       <div class="step">
-        <div class="step-num">// 03 — pip</div>
+        <div class="step-num">// 04 — pip</div>
         <h3>Install from PyPI</h3>
         <p>Install the package and run it directly:</p>
         <div class="code-window">
