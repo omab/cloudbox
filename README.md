@@ -326,7 +326,8 @@ Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
 | Streaming Pull (gRPC) | ✅ | Bidirectional stream; delivers messages, processes ack/nack/modifyDeadline |
 | Snapshots / seek | ✅ | Create/delete/list snapshots; seek to snapshot or RFC3339 timestamp |
 | Schema validation | ✅ | AVRO and PROTOCOL_BUFFER schemas; CRUD + `ValidateSchema` / `ValidateMessage`; topic `schemaSettings` enforced on publish |
-| BigQuery / Cloud Storage subscriptions | ❌ | |
+| BigQuery subscriptions | ✅ | `bigqueryConfig.table`; `writeMetadata`, `useTopicSchema`, `dropUnknownFields` supported |
+| Cloud Storage subscriptions | ✅ | `cloudStorageConfig.bucket`; text (raw bytes) and Avro-JSON formats; `filenamePrefix`/`filenameSuffix`; `avroConfig.writeMetadata` |
 | Topic message retention | ✅ | `messageRetentionDuration` honoured; messages retained in topic log |
 
 ### Firestore

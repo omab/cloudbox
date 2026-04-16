@@ -8,6 +8,7 @@ of catch-alls so FastAPI can route correctly.
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -79,6 +80,123 @@ async def _dispatch_push(push_endpoint: str, sub_name: str, ack_id: str, message
     except Exception as exc:
         logger.warning("Push delivery to %s failed: %s", push_endpoint, exc)
         ps_store.modify_ack_deadline(sub_name, [ack_id], 0)
+
+
+def _parse_bq_table_ref(table_ref: str) -> tuple[str, str, str] | None:
+    """Parse 'project:dataset.table' or 'project.dataset.table' → (project, dataset, table)."""
+    normalized = table_ref.replace(":", ".", 1)
+    parts = normalized.split(".")
+    if len(parts) == 3:
+        return parts[0], parts[1], parts[2]
+    return None
+
+
+async def _write_to_bigquery(sub_data: dict, msg: dict) -> None:
+    """Insert a Pub/Sub message into a BigQuery table."""
+    from localgcp.services.bigquery.engine import get_engine
+
+    bq_cfg = sub_data.get("bigqueryConfig") or {}
+    table_ref = bq_cfg.get("table", "")
+    parsed = _parse_bq_table_ref(table_ref)
+    if not parsed:
+        logger.warning("Invalid BigQuery table reference: %s", table_ref)
+        return
+    project, dataset_id, table_id = parsed
+
+    write_metadata = bq_cfg.get("writeMetadata", False)
+    use_topic_schema = bq_cfg.get("useTopicSchema", False)
+    drop_unknown = bq_cfg.get("dropUnknownFields", False)
+
+    engine = get_engine()
+
+    row: dict = {}
+    if use_topic_schema:
+        raw = msg.get("data", "")
+        try:
+            row = json.loads(base64.b64decode(raw).decode("utf-8")) if raw else {}
+        except Exception as exc:
+            logger.warning("BQ subscription: failed to decode message as JSON: %s", exc)
+            row = {}
+    else:
+        row["data"] = msg.get("data", "")  # stored as base64 string
+
+    if write_metadata:
+        row["subscription_name"] = sub_data.get("name", "")
+        row["message_id"] = msg.get("messageId", "")
+        row["publish_time"] = msg.get("publishTime", "")
+        row["attributes"] = json.dumps(msg.get("attributes", {}))
+
+    if drop_unknown:
+        tbl = engine.get_table(project, dataset_id, table_id)
+        if tbl:
+            field_names = {f["name"] for f in (tbl.get("schema") or {}).get("fields", [])}
+            row = {k: v for k, v in row.items() if k in field_names}
+
+    try:
+        engine.insert_rows(project, dataset_id, table_id, [{"json": row}])
+        logger.debug("BQ subscription wrote row to %s", table_ref)
+    except Exception as exc:
+        logger.warning("BQ subscription failed to write to %s: %s", table_ref, exc)
+
+
+async def _write_to_gcs(sub_data: dict, msg: dict) -> None:
+    """Write a Pub/Sub message as a Cloud Storage object."""
+    import hashlib
+    from localgcp.services.gcs.store import get_store as get_gcs_store
+    from localgcp.services.gcs.models import ObjectModel
+
+    gcs_cfg = sub_data.get("cloudStorageConfig") or {}
+    bucket = gcs_cfg.get("bucket", "")
+    if not bucket:
+        logger.warning("cloudStorageConfig missing bucket for subscription %s", sub_data.get("name", ""))
+        return
+
+    gcs_store = get_gcs_store()
+    if not gcs_store.exists("buckets", bucket):
+        logger.warning("GCS bucket '%s' not found for subscription %s", bucket, sub_data.get("name", ""))
+        return
+
+    prefix = gcs_cfg.get("filenamePrefix", "")
+    suffix = gcs_cfg.get("filenameSuffix", "")
+    avro_cfg = gcs_cfg.get("avroConfig")
+
+    raw_data = msg.get("data", "")
+    data_bytes = base64.b64decode(raw_data) if raw_data else b""
+
+    if avro_cfg is not None:
+        write_metadata = (avro_cfg or {}).get("writeMetadata", False)
+        record: dict = {"data": raw_data}
+        if write_metadata:
+            record.update({
+                "subscription_name": sub_data.get("name", ""),
+                "message_id": msg.get("messageId", ""),
+                "publish_time": msg.get("publishTime", ""),
+                "attributes": msg.get("attributes", {}),
+            })
+        body_bytes = json.dumps(record).encode("utf-8")
+        content_type = "application/avro"
+    else:
+        body_bytes = data_bytes
+        content_type = "text/plain"
+
+    # Object name: {prefix}{publish_time_safe}_{messageId}{suffix}
+    pub_time = msg.get("publishTime", _now()).replace(":", "").replace(".", "")
+    msg_id = msg.get("messageId", str(uuid.uuid4()))
+    obj_name = f"{prefix}{pub_time}_{msg_id}{suffix}"
+    store_key = f"{bucket}/{obj_name}"
+
+    md5_hash = base64.b64encode(hashlib.md5(body_bytes).digest()).decode()
+    obj_meta = ObjectModel(
+        name=obj_name,
+        bucket=bucket,
+        size=str(len(body_bytes)),
+        contentType=content_type,
+        md5Hash=md5_hash,
+    ).model_dump()
+
+    gcs_store.set("objects", store_key, obj_meta)
+    gcs_store.set("bodies", store_key, body_bytes)
+    logger.debug("GCS subscription wrote object gs://%s/%s", bucket, obj_name)
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +323,18 @@ async def publish(
             if sub.get("topic") != full_name:
                 continue
             sub_name = sub["name"]
-            # Apply subscription-level message filter
+
+            # BigQuery subscription — write directly to BQ, skip queue
+            if (sub.get("bigqueryConfig") or {}).get("table"):
+                await _write_to_bigquery(sub, msg)
+                continue
+
+            # Cloud Storage subscription — write directly to GCS, skip queue
+            if (sub.get("cloudStorageConfig") or {}).get("bucket"):
+                await _write_to_gcs(sub, msg)
+                continue
+
+            # Normal subscription: apply filter, enqueue, dispatch push if configured
             if not filter_matches(sub.get("filter", ""), msg):
                 continue
             push_endpoint = (sub.get("pushConfig") or {}).get("pushEndpoint", "")
@@ -238,7 +367,16 @@ async def create_subscription(project: str, sub_id: str, body: SubscriptionModel
         raise GCPError(404, f"Topic not found: {body.topic}")
 
     sub = SubscriptionModel(name=full_name, **{k: v for k, v in body.model_dump().items() if k != "name"})
+
+    # Validate BigQuery / Cloud Storage configs
+    if sub.bigqueryConfig and sub.bigqueryConfig.table:
+        if not _parse_bq_table_ref(sub.bigqueryConfig.table):
+            raise GCPError(400, f"Invalid BigQuery table reference: {sub.bigqueryConfig.table}")
+    if sub.cloudStorageConfig and not sub.cloudStorageConfig.bucket:
+        raise GCPError(400, "cloudStorageConfig.bucket is required")
+
     store.set("subscriptions", full_name, sub.model_dump())
+    # BQ/GCS subscriptions have no pull queue — ensure_queue is still harmless
     ps_store.ensure_queue(full_name)
     return sub.model_dump()
 

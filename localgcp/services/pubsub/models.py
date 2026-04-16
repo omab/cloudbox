@@ -27,6 +27,27 @@ class TopicModel(BaseModel):
     schemaSettings: SchemaSettings | None = None
 
 
+class BigQueryConfig(BaseModel):
+    table: str = ""                 # "project:dataset.table" or "project.dataset.table"
+    useTopicSchema: bool = False    # decode message JSON and map to table columns
+    writeMetadata: bool = False     # add subscription_name / message_id / publish_time / attributes
+    dropUnknownFields: bool = False # silently drop columns not in the table schema
+
+
+class CloudStorageAvroConfig(BaseModel):
+    writeMetadata: bool = False     # include subscription / message metadata fields
+
+
+class CloudStorageConfig(BaseModel):
+    bucket: str = ""
+    filenamePrefix: str = ""
+    filenameSuffix: str = ""
+    maxDuration: str = "300s"
+    maxBytes: int = 100 * 1024 * 1024
+    avroConfig: CloudStorageAvroConfig | None = None
+    # if avroConfig is None, messages are written as raw bytes (text format)
+
+
 class PushConfig(BaseModel):
     pushEndpoint: str = ""
     attributes: dict[str, str] = Field(default_factory=dict)
@@ -54,6 +75,8 @@ class SubscriptionModel(BaseModel):
     deadLetterPolicy: DeadLetterPolicy | None = None
     retryPolicy: RetryPolicy | None = None
     filter: str = ""
+    bigqueryConfig: BigQueryConfig | None = None
+    cloudStorageConfig: CloudStorageConfig | None = None
 
 
 class PubsubMessage(BaseModel):
