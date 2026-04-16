@@ -21,6 +21,7 @@ from localgcp.services.pubsub import store as ps_store
 from localgcp.services.pubsub.filter import matches as filter_matches
 from localgcp.services.pubsub.models import (
     AcknowledgeRequest,
+    CreateSnapshotRequest,
     ModifyAckDeadlineRequest,
     PublishRequest,
     PublishResponse,
@@ -28,6 +29,9 @@ from localgcp.services.pubsub.models import (
     PullResponse,
     PubsubMessage,
     ReceivedMessage,
+    SeekRequest,
+    SnapshotListResponse,
+    SnapshotModel,
     SubscriptionListResponse,
     SubscriptionModel,
     TopicListResponse,
@@ -141,6 +145,7 @@ async def publish(
             "publishTime": _now(),
             "orderingKey": raw_msg.get("orderingKey", ""),
         }
+        ps_store.log_to_topic(full_name, msg)
         for sub in store.list("subscriptions"):
             if sub.get("topic") != full_name:
                 continue
@@ -258,3 +263,92 @@ async def modify_ack_deadline(project: str, sub_id: str, body: ModifyAckDeadline
         raise GCPError(404, f"Subscription not found: {full_name}")
     ps_store.modify_ack_deadline(full_name, body.ackIds, body.ackDeadlineSeconds)
     return {}
+
+
+@app.post("/v1/projects/{project}/subscriptions/{sub_id}:seek")
+async def seek(project: str, sub_id: str, body: SeekRequest):
+    full_name = f"projects/{project}/subscriptions/{sub_id}"
+    store = ps_store.get_store()
+    sub_data = store.get("subscriptions", full_name)
+    if sub_data is None:
+        raise GCPError(404, f"Subscription not found: {full_name}")
+
+    topic = sub_data["topic"]
+
+    if body.snapshot:
+        snap = store.get("snapshots", body.snapshot)
+        if snap is None:
+            raise GCPError(404, f"Snapshot not found: {body.snapshot}")
+        since_iso = snap["snapshotTime"]
+    elif body.time:
+        since_iso = body.time
+    else:
+        raise GCPError(400, "seek requires either 'time' or 'snapshot'")
+
+    ps_store.seek_subscription(full_name, topic, since_iso)
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# Snapshots
+# ---------------------------------------------------------------------------
+
+
+@app.put("/v1/projects/{project}/snapshots/{snap_id}")
+async def create_snapshot(project: str, snap_id: str, body: CreateSnapshotRequest):
+    snap_name = f"projects/{project}/snapshots/{snap_id}"
+    store = ps_store.get_store()
+    if not store.exists("subscriptions", body.subscription):
+        raise GCPError(404, f"Subscription not found: {body.subscription}")
+    snap = ps_store.create_snapshot(snap_name, body.subscription)
+    if snap is None:
+        raise GCPError(404, f"Subscription not found: {body.subscription}")
+    if body.labels:
+        snap["labels"] = body.labels
+        store.set("snapshots", snap_name, snap)
+    return SnapshotModel(**snap).model_dump()
+
+
+@app.get("/v1/projects/{project}/snapshots/{snap_id}")
+async def get_snapshot(project: str, snap_id: str):
+    snap_name = f"projects/{project}/snapshots/{snap_id}"
+    store = ps_store.get_store()
+    data = store.get("snapshots", snap_name)
+    if data is None:
+        raise GCPError(404, f"Snapshot not found: {snap_name}")
+    return SnapshotModel(**data).model_dump()
+
+
+@app.get("/v1/projects/{project}/snapshots")
+async def list_snapshots(project: str, pageSize: int = 100, pageToken: str = ""):
+    store = ps_store.get_store()
+    prefix = f"projects/{project}/snapshots/"
+    items = [SnapshotModel(**v) for v in store.list("snapshots") if v["name"].startswith(prefix)]
+    offset = int(pageToken) if pageToken else 0
+    page = items[offset: offset + pageSize]
+    next_token = str(offset + pageSize) if offset + pageSize < len(items) else None
+    return SnapshotListResponse(snapshots=page, nextPageToken=next_token).model_dump(exclude_none=True)
+
+
+@app.patch("/v1/projects/{project}/snapshots/{snap_id}")
+async def update_snapshot(project: str, snap_id: str, body: SnapshotModel):
+    snap_name = f"projects/{project}/snapshots/{snap_id}"
+    store = ps_store.get_store()
+    data = store.get("snapshots", snap_name)
+    if data is None:
+        raise GCPError(404, f"Snapshot not found: {snap_name}")
+    if body.labels is not None:
+        data["labels"] = body.labels
+    if body.expireTime:
+        data["expireTime"] = body.expireTime
+    store.set("snapshots", snap_name, data)
+    return SnapshotModel(**data).model_dump()
+
+
+@app.delete("/v1/projects/{project}/snapshots/{snap_id}", status_code=204)
+async def delete_snapshot(project: str, snap_id: str):
+    snap_name = f"projects/{project}/snapshots/{snap_id}"
+    store = ps_store.get_store()
+    if not store.delete("snapshots", snap_name):
+        raise GCPError(404, f"Snapshot not found: {snap_name}")
+    return Response(status_code=204)

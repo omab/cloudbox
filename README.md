@@ -321,10 +321,10 @@ Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
 | gRPC server (port 8085) | ✅ | Compatible with `PUBSUB_EMULATOR_HOST` |
 | REST server (port 8086) | ✅ | `transport="rest"` SDK clients |
 | Streaming Pull (gRPC) | ✅ | Bidirectional stream; delivers messages, processes ack/nack/modifyDeadline |
-| Snapshots / seek | ❌ | |
+| Snapshots / seek | ✅ | Create/delete/list snapshots; seek to snapshot or RFC3339 timestamp |
 | Schema validation | ❌ | |
 | BigQuery / Cloud Storage subscriptions | ❌ | |
-| Topic message retention | ❌ | |
+| Topic message retention | ✅ | `messageRetentionDuration` honoured; messages retained in topic log |
 
 ### Firestore
 

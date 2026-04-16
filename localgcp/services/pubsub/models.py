@@ -88,3 +88,26 @@ class TopicListResponse(BaseModel):
 class SubscriptionListResponse(BaseModel):
     subscriptions: list[SubscriptionModel] = Field(default_factory=list)
     nextPageToken: str | None = None
+
+
+class SnapshotModel(BaseModel):
+    name: str = ""
+    topic: str = ""
+    expireTime: str = ""
+    labels: dict[str, str] = Field(default_factory=dict)
+    snapshotTime: str = ""  # internal: oldest unacked publishTime at creation
+
+
+class SnapshotListResponse(BaseModel):
+    snapshots: list[SnapshotModel] = Field(default_factory=list)
+    nextPageToken: str | None = None
+
+
+class CreateSnapshotRequest(BaseModel):
+    subscription: str
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
+class SeekRequest(BaseModel):
+    time: str = ""        # RFC3339; seek to this point in time
+    snapshot: str = ""    # full snapshot resource name

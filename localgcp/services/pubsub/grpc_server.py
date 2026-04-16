@@ -178,6 +178,7 @@ async def _publish(request, context):
             "publishTime": _now(),
             "orderingKey": raw_msg.ordering_key,
         }
+        ps_store.log_to_topic(request.topic, msg)
         for sub in store.list("subscriptions"):
             if sub.get("topic") == request.topic:
                 sub_name = sub["name"]
@@ -312,6 +313,85 @@ async def _modify_ack_deadline(request, context):
         return
     ps_store.modify_ack_deadline(request.subscription, list(request.ack_ids), request.ack_deadline_seconds)
     return empty_pb2.Empty()
+
+
+async def _create_snapshot(request, context):
+    store = ps_store.get_store()
+    if not store.exists("subscriptions", request.subscription):
+        await context.abort(grpc.StatusCode.NOT_FOUND, f"Subscription not found: {request.subscription}")
+        return
+    snap = ps_store.create_snapshot(request.name, request.subscription)
+    if snap is None:
+        await context.abort(grpc.StatusCode.NOT_FOUND, f"Subscription not found: {request.subscription}")
+        return
+    if request.labels:
+        snap["labels"] = dict(request.labels)
+        store.set("snapshots", request.name, snap)
+    t = _types()
+    return t.Snapshot(name=snap["name"], topic=snap["topic"],
+                      labels=snap.get("labels", {}))
+
+
+async def _get_snapshot(request, context):
+    t = _types()
+    store = ps_store.get_store()
+    data = store.get("snapshots", request.snapshot)
+    if data is None:
+        await context.abort(grpc.StatusCode.NOT_FOUND, f"Snapshot not found: {request.snapshot}")
+        return
+    return t.Snapshot(name=data["name"], topic=data["topic"], labels=data.get("labels", {}))
+
+
+async def _list_snapshots(request, context):
+    t = _types()
+    store = ps_store.get_store()
+    prefix = f"{request.project}/snapshots/"
+    items = [
+        t.Snapshot(name=v["name"], topic=v["topic"], labels=v.get("labels", {}))
+        for v in store.list("snapshots")
+        if v["name"].startswith(prefix)
+    ]
+    offset = int(request.page_token) if request.page_token else 0
+    page_size = request.page_size or 100
+    page = items[offset: offset + page_size]
+    next_token = str(offset + page_size) if offset + page_size < len(items) else ""
+    return t.ListSnapshotsResponse(snapshots=page, next_page_token=next_token)
+
+
+async def _delete_snapshot(request, context):
+    store = ps_store.get_store()
+    if not store.delete("snapshots", request.snapshot):
+        await context.abort(grpc.StatusCode.NOT_FOUND, f"Snapshot not found: {request.snapshot}")
+        return
+    return empty_pb2.Empty()
+
+
+async def _seek(request, context):
+    t = _types()
+    store = ps_store.get_store()
+    sub_data = store.get("subscriptions", request.subscription)
+    if sub_data is None:
+        await context.abort(grpc.StatusCode.NOT_FOUND, f"Subscription not found: {request.subscription}")
+        return
+
+    topic = sub_data["topic"]
+
+    if request.snapshot:
+        snap = store.get("snapshots", request.snapshot)
+        if snap is None:
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"Snapshot not found: {request.snapshot}")
+            return
+        since_iso = snap["snapshotTime"]
+    elif request.time and request.time.timestamp() > 0:
+        # proto-plus maps Timestamp → datetime
+        dt = request.time
+        since_iso = dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    else:
+        await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "seek requires time or snapshot")
+        return
+
+    ps_store.seek_subscription(request.subscription, topic, since_iso)
+    return t.SeekResponse()
 
 
 async def _streaming_pull(request_iterator, context):
@@ -518,6 +598,31 @@ class _PubSubRpcHandler(grpc.GenericRpcHandler):
                 _streaming_pull,
                 request_deserializer=t.StreamingPullRequest.deserialize,
                 response_serializer=t.StreamingPullResponse.serialize,
+            ),
+            _s + "CreateSnapshot": grpc.unary_unary_rpc_method_handler(
+                _create_snapshot,
+                request_deserializer=t.CreateSnapshotRequest.deserialize,
+                response_serializer=t.Snapshot.serialize,
+            ),
+            _s + "GetSnapshot": grpc.unary_unary_rpc_method_handler(
+                _get_snapshot,
+                request_deserializer=t.GetSnapshotRequest.deserialize,
+                response_serializer=t.Snapshot.serialize,
+            ),
+            _s + "ListSnapshots": grpc.unary_unary_rpc_method_handler(
+                _list_snapshots,
+                request_deserializer=t.ListSnapshotsRequest.deserialize,
+                response_serializer=t.ListSnapshotsResponse.serialize,
+            ),
+            _s + "DeleteSnapshot": grpc.unary_unary_rpc_method_handler(
+                _delete_snapshot,
+                request_deserializer=t.DeleteSnapshotRequest.deserialize,
+                response_serializer=_ser_empty,
+            ),
+            _s + "Seek": grpc.unary_unary_rpc_method_handler(
+                _seek,
+                request_deserializer=t.SeekRequest.deserialize,
+                response_serializer=t.SeekResponse.serialize,
             ),
         }
 
