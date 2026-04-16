@@ -161,6 +161,24 @@ async def api_gcs_notifications(bucket: str = Query(...)):
     return result
 
 
+@app.get("/api/gcs/download")
+async def api_gcs_download(bucket: str = Query(...), name: str = Query(...)):
+    from localgcp.services.gcs.store import get_store
+    store = get_store()
+    key = f"{bucket}/{name}"
+    data = store.get("objects", key)
+    if data is None:
+        return JSONResponse(status_code=404, content={"error": "Object not found"})
+    body = store.get("bodies", key) or b""
+    content_type = data.get("contentType", "application/octet-stream")
+    filename = name.rsplit("/", 1)[-1]
+    return Response(
+        content=body,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/api/gcs/objects")
 async def api_gcs_objects(bucket: str = Query(...)):
     from localgcp.services.gcs.store import get_store

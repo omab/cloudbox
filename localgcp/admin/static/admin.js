@@ -468,12 +468,16 @@ function renderGCSObjects() {
   // File rows
   for (const o of pageFiles) {
     const relName = o.name.slice(prefix.length);
+    const dlUrl = '/api/gcs/download?' + new URLSearchParams({ bucket, name: o.name });
     rows += `<tr>
       <td class="mono">${esc(relName)}</td>
       <td class="dim" style="white-space:nowrap">${humanSize(o.size)}</td>
       <td class="dim">${esc(o.contentType || '')}</td>
       <td class="dim" style="white-space:nowrap">${o.updated ? o.updated.substring(0, 19).replace('T', ' ') : '&mdash;'}</td>
-      <td class="actions"><button class="btn btn-danger" onclick="deleteGCSObject(${_q(bucket)}, ${_q(o.name)})">Delete</button></td>
+      <td class="actions">
+        <a href="${dlUrl}" download class="btn btn-ghost">Download</a>
+        <button class="btn btn-danger" onclick="deleteGCSObject(${_q(bucket)}, ${_q(o.name)})">Delete</button>
+      </td>
     </tr>`;
   }
 
