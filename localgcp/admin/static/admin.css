@@ -63,6 +63,7 @@ tr:hover td { background: #fafafa; }
 .btn-link:hover { text-decoration: underline; }
 
 .cnt { display: inline-block; background: #e8f0fe; color: #1a73e8; border-radius: 10px; padding: .1rem .5rem; font-size: .75rem; font-weight: 600; }
+.cnt-warn { background: #fce8e6; color: #d93025; }
 .state { display: inline-block; border-radius: 10px; padding: .1rem .5rem; font-size: .75rem; font-weight: 500; }
 .s-running, .s-enabled  { background: #e6f4ea; color: #137333; }
 .s-paused, .s-disabled  { background: #fef3e2; color: #e37400; }

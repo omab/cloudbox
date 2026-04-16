@@ -218,25 +218,25 @@ async def api_gcs_delete_object(bucket: str = Query(...), name: str = Query(...)
 
 @app.get("/api/pubsub/topics")
 async def api_pubsub_topics():
-    from localgcp.services.pubsub.store import get_store
+    from localgcp.services.pubsub.store import get_store, retained_count
     store = get_store()
     topics = store.list("topics")
     subs = store.list("subscriptions")
     result = []
     for t in sorted(topics, key=lambda x: x["name"]):
         count = sum(1 for s in subs if s["topic"] == t["name"])
-        result.append({**t, "subscriptionCount": count})
+        result.append({**t, "subscriptionCount": count, "retainedCount": retained_count(t["name"])})
     return result
 
 
 @app.get("/api/pubsub/subscriptions")
 async def api_pubsub_subscriptions():
-    from localgcp.services.pubsub.store import get_store, queue_depth
+    from localgcp.services.pubsub.store import get_store, queue_depth, unacked_count
     store = get_store()
     subs = store.list("subscriptions")
     result = []
     for s in sorted(subs, key=lambda x: x["name"]):
-        result.append({**s, "queueDepth": queue_depth(s["name"])})
+        result.append({**s, "queueDepth": queue_depth(s["name"]), "unackedCount": unacked_count(s["name"])})
     return result
 
 

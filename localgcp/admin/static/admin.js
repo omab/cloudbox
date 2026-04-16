@@ -515,7 +515,7 @@ function renderGCSObjects() {
     for (const n of _gcs.notifications) {
       const topic = n.topic ? n.topic.replace('//pubsub.googleapis.com/', '') : '&mdash;';
       const events = (n.event_types && n.event_types.length) ? n.event_types.join(', ') : 'ALL';
-      const prefix = n.object_name_prefix || '<em class="dim">any</em>';
+      const prefix = n.object_name_prefix || 'any';
       const fmt = n.payload_format || 'JSON_API_V1';
       notifRows += `<tr>
         <td class="mono dim">${esc(n.id || '&mdash;')}</td>
@@ -604,14 +604,16 @@ function pgPsTopic(d)   { _pgChg(_ps.tPg, _ps.topics.length, d); renderPsTopics(
 function szPsTopic(v)   { _ps.tPg.size=v==='all'?'all':+v; _ps.tPg.page=0; renderPsTopics(); }
 
 function renderPsTopics() {
-  const sorted = _srt(_ps.topics, _ps.tSort, ['subscriptionCount']);
+  const sorted = _srt(_ps.topics, _ps.tSort, ['subscriptionCount','retainedCount']);
   const {slice, total} = _pg(sorted, _ps.tPg);
   const sth = (l,f) => _sth(l, f, _ps.tSort, 'sortPsTopic');
   let rows = '';
   for (const t of slice) {
+    const retained = t.retainedCount || 0;
     rows += `<tr>
       <td class="mono">${esc(shortName(t.name))}</td>
       <td><span class="cnt">${t.subscriptionCount}</span></td>
+      <td><span class="cnt${retained > 0 ? ' cnt-warn' : ''}">${retained}</span></td>
       <td class="dim">${esc(t.name)}</td>
       <td class="actions">
         <button class="btn btn-secondary" onclick="openPublishModal(${_q(t.name)})">Publish</button>
@@ -623,8 +625,8 @@ function renderPsTopics() {
     <div class="card">
       <div class="card-header"><h2>Topics</h2><span class="cnt">${total}</span></div>
       <table>
-        <thead><tr>${sth('Name','name')}${sth('Subscriptions','subscriptionCount')}<th>Full Name</th><th>Actions</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="4" class="empty">No topics</td></tr>'}</tbody>
+        <thead><tr>${sth('Name','name')}${sth('Subscriptions','subscriptionCount')}${sth('Retained Msgs','retainedCount')}<th>Full Name</th><th>Actions</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5" class="empty">No topics</td></tr>'}</tbody>
       </table>
       ${_pgBar(total, _ps.tPg, 'pgPsTopic', 'szPsTopic')}
     </div>`;
@@ -635,15 +637,18 @@ function pgPsSub(d)   { _pgChg(_ps.sPg, _ps.subs.length, d); renderPsSubs(); }
 function szPsSub(v)   { _ps.sPg.size=v==='all'?'all':+v; _ps.sPg.page=0; renderPsSubs(); }
 
 function renderPsSubs() {
-  const sorted = _srt(_ps.subs, _ps.sSort, ['queueDepth','ackDeadlineSeconds']);
+  const sorted = _srt(_ps.subs, _ps.sSort, ['queueDepth','unackedCount','ackDeadlineSeconds']);
   const {slice, total} = _pg(sorted, _ps.sPg);
   const sth = (l,f) => _sth(l, f, _ps.sSort, 'sortPsSub');
   let rows = '';
   for (const s of slice) {
+    const pending = s.queueDepth || 0;
+    const unacked = s.unackedCount || 0;
     rows += `<tr>
       <td class="mono">${esc(shortName(s.name))}</td>
       <td class="dim mono">${esc(shortName(s.topic))}</td>
-      <td><span class="cnt">${s.queueDepth}</span></td>
+      <td><span class="cnt${pending > 0 ? ' cnt-warn' : ''}">${pending}</span></td>
+      <td><span class="cnt${unacked > 0 ? ' cnt-warn' : ''}">${unacked}</span></td>
       <td class="dim">${s.ackDeadlineSeconds}s</td>
       <td class="actions"><button class="btn btn-danger" onclick="deletePubSubSub(${_q(s.name)})">Delete</button></td>
     </tr>`;
@@ -654,10 +659,10 @@ function renderPsSubs() {
       <table>
         <thead><tr>
           ${sth('Name','name')}${sth('Topic','topic')}
-          ${sth('Queue Depth','queueDepth')}${sth('Ack Deadline','ackDeadlineSeconds')}
+          ${sth('Pending','queueDepth')}${sth('In-flight','unackedCount')}${sth('Ack Deadline','ackDeadlineSeconds')}
           <th>Actions</th>
         </tr></thead>
-        <tbody>${rows || '<tr><td colspan="5" class="empty">No subscriptions</td></tr>'}</tbody>
+        <tbody>${rows || '<tr><td colspan="6" class="empty">No subscriptions</td></tr>'}</tbody>
       </table>
       ${_pgBar(total, _ps.sPg, 'pgPsSub', 'szPsSub')}
     </div>`;

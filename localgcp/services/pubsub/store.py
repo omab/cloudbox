@@ -164,6 +164,16 @@ def queue_depth(sub_name: str) -> int:
         return len(_queues.get(sub_name, []))
 
 
+def unacked_count(sub_name: str) -> int:
+    with _lock:
+        return len(_unacked.get(sub_name, {}))
+
+
+def retained_count(topic_name: str) -> int:
+    with _lock:
+        return len(_topic_log.get(topic_name, []))
+
+
 def _route_to_dlq(dlq_topic: str, message: dict) -> None:
     """Enqueue a message to all subscriptions of a dead-letter topic (called under _lock)."""
     for sub in _store.list("subscriptions"):
