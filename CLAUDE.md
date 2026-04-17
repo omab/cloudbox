@@ -144,3 +144,7 @@ Packaging is configured in `pyproject.toml` with `[tool.uv] package = true` and 
 ## Persistence
 
 By default all state is in-memory and lost on restart. Set `CLOUDBOX_DATA_DIR` to a directory path to enable JSON file persistence. The `NamespacedStore` in `cloudbox/core/store.py` handles both modes transparently. Writes are atomic (write to `.tmp`, then `Path.replace()`).
+
+## Committing changes
+
+After each meaningful change (bug fix, feature, docs update, refactor), generate a git commit. Do not batch unrelated changes into one commit.
