@@ -536,3 +536,141 @@ def test_sync_query_errored_returns_empty_result(bq_client):
     body = r.json()
     assert body["jobComplete"] is True
     assert body["rows"] == []
+
+
+# ---------------------------------------------------------------------------
+# Parameterized queries
+# ---------------------------------------------------------------------------
+
+
+def _make_table(bq_client, dataset_id, table_id, rows):
+    """Helper: create dataset+table and insert rows."""
+    bq_client.post(
+        f"{BASE}/datasets",
+        json={"datasetReference": {"projectId": PROJECT, "datasetId": dataset_id}},
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{dataset_id}/tables",
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": dataset_id, "tableId": table_id},
+            "schema": {"fields": [
+                {"name": "id", "type": "INTEGER"},
+                {"name": "name", "type": "STRING"},
+                {"name": "score", "type": "FLOAT"},
+            ]},
+        },
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{dataset_id}/tables/{table_id}/insertAll",
+        json={"rows": [{"json": row} for row in rows]},
+    )
+
+
+def test_named_params_via_jobs(bq_client):
+    _make_table(bq_client, "pds1", "pt1", [
+        {"id": 1, "name": "Alice", "score": 9.5},
+        {"id": 2, "name": "Bob", "score": 7.0},
+    ])
+    r = bq_client.post(
+        f"{BASE}/jobs",
+        json={
+            "configuration": {
+                "query": {
+                    "query": "SELECT name FROM pds1.pt1 WHERE id = @user_id",
+                    "parameterMode": "NAMED",
+                    "queryParameters": [
+                        {"name": "user_id", "parameterType": {"type": "INT64"}, "parameterValue": {"value": "1"}},
+                    ],
+                }
+            }
+        },
+    )
+    assert r.status_code == 200
+    job_id = r.json()["jobReference"]["jobId"]
+
+    r2 = bq_client.get(f"{BASE}/queries/{job_id}")
+    rows = r2.json()["rows"]
+    assert len(rows) == 1
+    assert rows[0]["f"][0]["v"] == "Alice"
+
+
+def test_positional_params_via_sync_query(bq_client):
+    _make_table(bq_client, "pds2", "pt2", [
+        {"id": 10, "name": "Carol", "score": 8.0},
+        {"id": 20, "name": "Dave", "score": 6.5},
+    ])
+    r = bq_client.post(
+        f"{BASE}/queries",
+        json={
+            "query": "SELECT name FROM pds2.pt2 WHERE score > ?",
+            "parameterMode": "POSITIONAL",
+            "queryParameters": [
+                {"parameterType": {"type": "FLOAT64"}, "parameterValue": {"value": "7.0"}},
+            ],
+        },
+    )
+    assert r.status_code == 200
+    rows = r.json()["rows"]
+    assert len(rows) == 1
+    assert rows[0]["f"][0]["v"] == "Carol"
+
+
+def test_named_param_repeated(bq_client):
+    """Same @param used twice in one query."""
+    _make_table(bq_client, "pds3", "pt3", [
+        {"id": 5, "name": "Eve", "score": 5.0},
+        {"id": 6, "name": "Frank", "score": 6.0},
+    ])
+    r = bq_client.post(
+        f"{BASE}/queries",
+        json={
+            "query": "SELECT name FROM pds3.pt3 WHERE id >= @lo AND id <= @lo",
+            "parameterMode": "NAMED",
+            "queryParameters": [
+                {"name": "lo", "parameterType": {"type": "INT64"}, "parameterValue": {"value": "5"}},
+            ],
+        },
+    )
+    assert r.status_code == 200
+    rows = r.json()["rows"]
+    assert len(rows) == 1
+    assert rows[0]["f"][0]["v"] == "Eve"
+
+
+def test_bool_and_string_params(bq_client):
+    bq_client.post(
+        f"{BASE}/datasets",
+        json={"datasetReference": {"projectId": PROJECT, "datasetId": "pds4"}},
+    )
+    bq_client.post(
+        f"{BASE}/datasets/pds4/tables",
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": "pds4", "tableId": "pt4"},
+            "schema": {"fields": [
+                {"name": "active", "type": "BOOLEAN"},
+                {"name": "label", "type": "STRING"},
+            ]},
+        },
+    )
+    bq_client.post(
+        f"{BASE}/datasets/pds4/tables/pt4/insertAll",
+        json={"rows": [
+            {"json": {"active": True, "label": "yes"}},
+            {"json": {"active": False, "label": "no"}},
+        ]},
+    )
+    r = bq_client.post(
+        f"{BASE}/queries",
+        json={
+            "query": "SELECT label FROM pds4.pt4 WHERE active = @flag AND label = @lbl",
+            "parameterMode": "NAMED",
+            "queryParameters": [
+                {"name": "flag", "parameterType": {"type": "BOOL"}, "parameterValue": {"value": "true"}},
+                {"name": "lbl", "parameterType": {"type": "STRING"}, "parameterValue": {"value": "yes"}},
+            ],
+        },
+    )
+    assert r.status_code == 200
+    rows = r.json()["rows"]
+    assert len(rows) == 1
+    assert rows[0]["f"][0]["v"] == "yes"

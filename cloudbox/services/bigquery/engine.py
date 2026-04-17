@@ -111,6 +111,64 @@ def _now_ms() -> str:
 # SQL rewriter
 # ------------------------------------------------------------------
 
+# ------------------------------------------------------------------
+# Query parameter helpers
+# ------------------------------------------------------------------
+
+def _bq_scalar_value(type_name: str, value: str) -> Any:
+    t = type_name.upper()
+    if t in ("INT64", "INTEGER", "INT"):
+        return int(value) if value else 0
+    if t in ("FLOAT64", "FLOAT", "NUMERIC", "BIGNUMERIC"):
+        return float(value) if value else 0.0
+    if t in ("BOOL", "BOOLEAN"):
+        return value.lower() in ("true", "1")
+    if t == "BYTES":
+        import base64 as _b64
+        return _b64.b64decode(value) if value else b""
+    return value  # STRING, TIMESTAMP, DATE, TIME, DATETIME, JSON
+
+
+def _bq_param_value(param: dict) -> Any:
+    """Convert a single BigQuery queryParameter object to a Python value."""
+    ptype = param.get("parameterType", {})
+    pval = param.get("parameterValue", {})
+    type_name = ptype.get("type", "STRING").upper()
+    if type_name == "ARRAY":
+        item_type = ptype.get("arrayType", {}).get("type", "STRING")
+        return [_bq_scalar_value(item_type, v.get("value", "")) for v in pval.get("arrayValues", [])]
+    return _bq_scalar_value(type_name, pval.get("value", ""))
+
+
+def _apply_query_params(
+    sql: str, query_parameters: list[dict], parameter_mode: str
+) -> tuple[str, list]:
+    """Rewrite BQ parameterized SQL to DuckDB positional form.
+
+    Named mode: replaces @name with ? in order of appearance (handles
+    repeated uses of the same parameter).
+    Positional mode: ? is already DuckDB-compatible; values passed as-is.
+    """
+    if not query_parameters:
+        return sql, []
+
+    if parameter_mode.upper() == "NAMED":
+        by_name = {p["name"]: _bq_param_value(p) for p in query_parameters if p.get("name")}
+        duck_params: list = []
+
+        def _replace(m: re.Match) -> str:
+            duck_params.append(by_name.get(m.group(1)))
+            return "?"
+
+        sql = re.sub(r"@([A-Za-z_][A-Za-z0-9_]*)", _replace, sql)
+    else:
+        duck_params = [_bq_param_value(p) for p in query_parameters]
+
+    return sql, duck_params
+
+
+# ------------------------------------------------------------------
+
 _SELECT_KEYWORDS = ("SELECT", "WITH", "VALUES", "SHOW", "DESCRIBE", "EXPLAIN", "PRAGMA")
 
 
@@ -314,14 +372,22 @@ class BigQueryEngine:
         job_id: str,
         query: str,
         use_legacy_sql: bool = False,
+        query_parameters: list | None = None,
+        parameter_mode: str = "NONE",
     ) -> dict:
         rewritten = _rewrite_sql(query, project)
+        if query_parameters:
+            rewritten, duck_params = _apply_query_params(
+                rewritten, query_parameters, parameter_mode or "POSITIONAL"
+            )
+        else:
+            duck_params = None
         now = _now_ms()
         job_ref = {"projectId": project, "jobId": job_id, "location": "US"}
 
         try:
             if _is_select(rewritten):
-                columns, rows = self._select(rewritten)
+                columns, rows = self._select(rewritten, duck_params)
                 schema_fields = [
                     {"name": name, "type": bq_type, "mode": "NULLABLE"}
                     for name, bq_type in columns
@@ -334,7 +400,7 @@ class BigQueryEngine:
             else:
                 # DML (INSERT/UPDATE/DELETE) or DDL (CREATE/DROP/ALTER)
                 # DuckDB returns a Count row after DML; capture it.
-                columns, rows = self._select(rewritten)
+                columns, rows = self._select(rewritten, duck_params)
                 num_dml_rows = rows[0][0] if rows and columns and columns[0][0] == "Count" else 0
                 schema_fields = []
                 bq_rows = []

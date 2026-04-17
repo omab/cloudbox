@@ -164,8 +164,15 @@ async def insert_job(project: str, request: Request):
     job_ref = body.get("jobReference", {})
     job_id = job_ref.get("jobId") or str(uuid.uuid4())
     use_legacy = query_cfg.get("useLegacySql", False)
+    query_parameters = query_cfg.get("queryParameters") or []
+    parameter_mode = query_cfg.get("parameterMode", "NONE")
 
-    job = _engine().run_query(project, job_id, sql, use_legacy_sql=use_legacy)
+    job = _engine().run_query(
+        project, job_id, sql,
+        use_legacy_sql=use_legacy,
+        query_parameters=query_parameters,
+        parameter_mode=parameter_mode,
+    )
     # Strip internal _result key before returning
     return {k: v for k, v in job.items() if not k.startswith("_")}
 
@@ -215,7 +222,14 @@ async def sync_query(project: str, request: Request):
         raise GCPError(400, "query is required")
     job_id = str(uuid.uuid4())
     use_legacy = body.get("useLegacySql", False)
-    job = _engine().run_query(project, job_id, sql, use_legacy_sql=use_legacy)
+    query_parameters = body.get("queryParameters") or []
+    parameter_mode = body.get("parameterMode", "NONE")
+    job = _engine().run_query(
+        project, job_id, sql,
+        use_legacy_sql=use_legacy,
+        query_parameters=query_parameters,
+        parameter_mode=parameter_mode,
+    )
     result = job.get("_result")
     if result is None:
         # query errored — surface as queryResponse with jobComplete=True and no rows

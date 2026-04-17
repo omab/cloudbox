@@ -453,7 +453,7 @@ Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
 | Async job insert + poll (`jobs.insert` / `jobs.get`) | ✅ | Jobs complete synchronously; polling always returns done |
 | Sync query shortcut (`queries` endpoint) | ✅ | |
 | `getQueryResults` | ✅ | |
-| Parameterized queries (`queryParameters`) | ❌ | |
+| Parameterized queries (`queryParameters`) | ✅ | Named (`@param`) and positional (`?`) modes; INT64, FLOAT64, BOOL, STRING, BYTES, ARRAY |
 | Partitioned / clustered tables | ❌ | Schema ignored; data stored flat in DuckDB |
 | Table update / schema evolution | ❌ | |
 | Views | ❌ | |
