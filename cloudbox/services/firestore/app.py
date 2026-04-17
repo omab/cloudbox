@@ -23,14 +23,17 @@ from fastapi.responses import JSONResponse
 from cloudbox.core.errors import GCPError, add_gcp_exception_handler
 from cloudbox.core.middleware import add_request_logging
 from cloudbox.services.firestore.models import (
+    AggregationConfig,
     BatchGetRequest,
     CommitRequest,
     CommitResponse,
     Document,
     FieldTransform,
     ListDocumentsResponse,
+    RunAggregationQueryRequest,
     RunQueryRequest,
 )
+from cloudbox.services.firestore.query import _get_field as _query_get_field
 from cloudbox.services.firestore.query import run_query
 from cloudbox.services.firestore.store import get_store
 
@@ -113,6 +116,105 @@ async def _run_query_impl(parent: str, body: RunQueryRequest):
 
     now = _now()
     return JSONResponse(content=[{"document": doc, "readTime": now} for doc in results])
+
+
+@app.post("/v1/projects/{project}/databases/{database}/documents:runAggregationQuery")
+async def run_aggregation_query_root(project: str, database: str, body: RunAggregationQueryRequest):
+    parent = f"projects/{project}/databases/{database}/documents"
+    return await _run_aggregation_query_impl(parent, body)
+
+
+@app.post("/v1/{parent_path:path}/documents:runAggregationQuery")
+async def run_aggregation_query_nested(parent_path: str, body: RunAggregationQueryRequest):
+    parent = f"{parent_path}/documents"
+    return await _run_aggregation_query_impl(parent, body)
+
+
+async def _run_aggregation_query_impl(parent: str, body: RunAggregationQueryRequest):
+    store = _store()
+    saq = body.structuredAggregationQuery
+    if saq is None:
+        return JSONResponse(content=[])
+
+    sq = saq.structuredQuery
+    aggregations = saq.aggregations
+
+    # Collect candidates (same logic as runQuery)
+    from_clauses = (sq.from_ or []) if sq else []
+    if not from_clauses:
+        candidates = store.list("documents")
+    else:
+        candidates = []
+        for from_clause in from_clauses:
+            collection_id = from_clause.get("collectionId", "")
+            all_descendants = from_clause.get("allDescendants", False)
+            if all_descendants:
+                prefix = f"{parent}/"
+                coll = [v for v in store.list("documents") if v["name"].startswith(prefix)]
+                if collection_id:
+                    coll = [d for d in coll if _in_collection(d["name"], collection_id)]
+            else:
+                prefix = f"{parent}/{collection_id}/"
+                coll = [
+                    v for v in store.list("documents")
+                    if v["name"].startswith(prefix) and "/" not in v["name"][len(prefix):]
+                ]
+            candidates.extend(coll)
+
+    # Apply WHERE / ORDER BY / OFFSET / LIMIT from the nested structuredQuery
+    if sq is not None:
+        sq_dict = sq.model_dump(by_alias=True, exclude_none=True)
+        documents = run_query(candidates, sq_dict)
+    else:
+        documents = candidates
+
+    # Compute each aggregation
+    now = _now()
+    aggregate_fields: dict = {}
+
+    for agg in aggregations:
+        alias = agg.get("alias", "")
+
+        if "count" in agg:
+            up_to = agg["count"].get("upTo")
+            count = len(documents)
+            if up_to is not None:
+                count = min(count, int(up_to))
+            aggregate_fields[alias] = {"integerValue": str(count)}
+
+        elif "sum" in agg:
+            field_path = agg["sum"]["field"]["fieldPath"]
+            total: int | float = 0
+            has_double = False
+            for doc in documents:
+                val = _query_get_field(doc.get("fields", {}), field_path)
+                if isinstance(val, bool) or not isinstance(val, (int, float)):
+                    continue
+                if isinstance(val, float):
+                    has_double = True
+                total += val
+            if has_double:
+                aggregate_fields[alias] = {"doubleValue": float(total)}
+            else:
+                aggregate_fields[alias] = {"integerValue": str(int(total))}
+
+        elif "avg" in agg:
+            field_path = agg["avg"]["field"]["fieldPath"]
+            values = [
+                float(_query_get_field(doc.get("fields", {}), field_path))
+                for doc in documents
+                if isinstance(_query_get_field(doc.get("fields", {}), field_path), (int, float))
+                and not isinstance(_query_get_field(doc.get("fields", {}), field_path), bool)
+            ]
+            if values:
+                aggregate_fields[alias] = {"doubleValue": sum(values) / len(values)}
+            else:
+                aggregate_fields[alias] = {"nullValue": "NULL_VALUE"}
+
+    return JSONResponse(content=[{
+        "result": {"aggregateFields": aggregate_fields},
+        "readTime": now,
+    }])
 
 
 @app.post("/v1/projects/{project}/databases/{database}/documents:batchGet")

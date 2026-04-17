@@ -593,6 +593,178 @@ def test_transform_nested_field_path(firestore_client):
     assert count == "7"
 
 
+# ---------------------------------------------------------------------------
+# Aggregation queries
+# ---------------------------------------------------------------------------
+
+
+def _seed_scores(firestore_client, collection, docs):
+    """Insert documents with name + score fields into a collection."""
+    for doc_id, score in docs:
+        firestore_client.post(
+            f"/v1/{DOCS}/{collection}",
+            params={"documentId": doc_id},
+            json={"fields": {
+                "name": {"stringValue": doc_id},
+                "score": {"integerValue": str(score)},
+            }},
+        )
+
+
+def test_aggregation_count(firestore_client):
+    _seed_scores(firestore_client, "agg_col1", [("a", 10), ("b", 20), ("c", 30)])
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runAggregationQuery",
+        json={
+            "structuredAggregationQuery": {
+                "structuredQuery": {"from": [{"collectionId": "agg_col1"}]},
+                "aggregations": [{"alias": "total", "count": {}}],
+            }
+        },
+    )
+    assert r.status_code == 200
+    result = r.json()
+    assert result[0]["result"]["aggregateFields"]["total"]["integerValue"] == "3"
+
+
+def test_aggregation_count_with_filter(firestore_client):
+    _seed_scores(firestore_client, "agg_col2", [("a", 5), ("b", 15), ("c", 25)])
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runAggregationQuery",
+        json={
+            "structuredAggregationQuery": {
+                "structuredQuery": {
+                    "from": [{"collectionId": "agg_col2"}],
+                    "where": {
+                        "fieldFilter": {
+                            "field": {"fieldPath": "score"},
+                            "op": "GREATER_THAN",
+                            "value": {"integerValue": "10"},
+                        }
+                    },
+                },
+                "aggregations": [{"alias": "n", "count": {}}],
+            }
+        },
+    )
+    assert r.json()[0]["result"]["aggregateFields"]["n"]["integerValue"] == "2"
+
+
+def test_aggregation_count_up_to(firestore_client):
+    _seed_scores(firestore_client, "agg_col3", [(f"d{i}", i) for i in range(10)])
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runAggregationQuery",
+        json={
+            "structuredAggregationQuery": {
+                "structuredQuery": {"from": [{"collectionId": "agg_col3"}]},
+                "aggregations": [{"alias": "capped", "count": {"upTo": "5"}}],
+            }
+        },
+    )
+    assert r.json()[0]["result"]["aggregateFields"]["capped"]["integerValue"] == "5"
+
+
+def test_aggregation_sum_integer(firestore_client):
+    _seed_scores(firestore_client, "agg_col4", [("x", 10), ("y", 20), ("z", 30)])
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runAggregationQuery",
+        json={
+            "structuredAggregationQuery": {
+                "structuredQuery": {"from": [{"collectionId": "agg_col4"}]},
+                "aggregations": [{"alias": "total", "sum": {"field": {"fieldPath": "score"}}}],
+            }
+        },
+    )
+    agg = r.json()[0]["result"]["aggregateFields"]["total"]
+    assert agg["integerValue"] == "60"
+
+
+def test_aggregation_sum_with_doubles(firestore_client):
+    firestore_client.post(
+        f"/v1/{DOCS}/agg_col5",
+        params={"documentId": "p"},
+        json={"fields": {"val": {"doubleValue": 1.5}}},
+    )
+    firestore_client.post(
+        f"/v1/{DOCS}/agg_col5",
+        params={"documentId": "q"},
+        json={"fields": {"val": {"integerValue": "2"}}},
+    )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runAggregationQuery",
+        json={
+            "structuredAggregationQuery": {
+                "structuredQuery": {"from": [{"collectionId": "agg_col5"}]},
+                "aggregations": [{"alias": "s", "sum": {"field": {"fieldPath": "val"}}}],
+            }
+        },
+    )
+    agg = r.json()[0]["result"]["aggregateFields"]["s"]
+    assert "doubleValue" in agg
+    assert abs(agg["doubleValue"] - 3.5) < 1e-9
+
+
+def test_aggregation_avg(firestore_client):
+    _seed_scores(firestore_client, "agg_col6", [("a", 10), ("b", 20), ("c", 30)])
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runAggregationQuery",
+        json={
+            "structuredAggregationQuery": {
+                "structuredQuery": {"from": [{"collectionId": "agg_col6"}]},
+                "aggregations": [{"alias": "mean", "avg": {"field": {"fieldPath": "score"}}}],
+            }
+        },
+    )
+    agg = r.json()[0]["result"]["aggregateFields"]["mean"]
+    assert abs(agg["doubleValue"] - 20.0) < 1e-9
+
+
+def test_aggregation_avg_no_values_returns_null(firestore_client):
+    firestore_client.post(
+        f"/v1/{DOCS}/agg_col7",
+        params={"documentId": "only"},
+        json={"fields": {"name": {"stringValue": "no-score"}}},
+    )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runAggregationQuery",
+        json={
+            "structuredAggregationQuery": {
+                "structuredQuery": {"from": [{"collectionId": "agg_col7"}]},
+                "aggregations": [{"alias": "mean", "avg": {"field": {"fieldPath": "score"}}}],
+            }
+        },
+    )
+    agg = r.json()[0]["result"]["aggregateFields"]["mean"]
+    assert "nullValue" in agg
+
+
+def test_aggregation_multiple_in_one_query(firestore_client):
+    _seed_scores(firestore_client, "agg_col8", [("a", 4), ("b", 6)])
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runAggregationQuery",
+        json={
+            "structuredAggregationQuery": {
+                "structuredQuery": {"from": [{"collectionId": "agg_col8"}]},
+                "aggregations": [
+                    {"alias": "n", "count": {}},
+                    {"alias": "total", "sum": {"field": {"fieldPath": "score"}}},
+                    {"alias": "mean", "avg": {"field": {"fieldPath": "score"}}},
+                ],
+            }
+        },
+    )
+    fields = r.json()[0]["result"]["aggregateFields"]
+    assert fields["n"]["integerValue"] == "2"
+    assert fields["total"]["integerValue"] == "10"
+    assert abs(fields["mean"]["doubleValue"] - 5.0) < 1e-9
+
+
+def test_aggregation_empty_request_returns_empty(firestore_client):
+    r = firestore_client.post(f"/v1/{DOCS}:runAggregationQuery", json={})
+    assert r.status_code == 200
+    assert r.json() == []
+
+
 def test_transform_multiple_in_one_write(firestore_client):
     firestore_client.post(
         f"/v1/{DOCS}/multi",

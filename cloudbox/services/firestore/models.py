@@ -77,6 +77,18 @@ class RunQueryRequest(BaseModel):
     readTime: str | None = None
 
 
+class AggregationConfig(BaseModel):
+    structuredQuery: StructuredQuery | None = None
+    aggregations: list[dict] = Field(default_factory=list)
+
+
+class RunAggregationQueryRequest(BaseModel):
+    structuredAggregationQuery: AggregationConfig | None = None
+    transaction: str | None = None
+    newTransaction: dict | None = None
+    readTime: str | None = None
+
+
 class BatchGetRequest(BaseModel):
     documents: list[str]
     mask: DocumentMask | None = None
