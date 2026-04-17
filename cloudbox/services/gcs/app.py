@@ -175,7 +175,7 @@ async def patch_bucket(bucket: str, request: Request):
     if data is None:
         raise GCPError(404, "The specified bucket does not exist.")
     body = await request.json()
-    for field in ("lifecycle", "labels", "storageClass", "location"):
+    for field in ("lifecycle", "labels", "storageClass", "location", "cors"):
         if field in body:
             data[field] = body[field]
     from cloudbox.services.gcs.models import _now_rfc3339
@@ -195,6 +195,49 @@ async def delete_bucket(bucket: str):
     if obj_keys:
         raise GCPError(409, f"The bucket you tried to delete is not empty.")
     store.delete("buckets", bucket)
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# Bucket CORS configuration
+# ---------------------------------------------------------------------------
+
+
+@app.get("/storage/v1/b/{bucket}/cors")
+async def get_bucket_cors(bucket: str):
+    store = _store()
+    data = store.get("buckets", bucket)
+    if data is None:
+        raise GCPError(404, "The specified bucket does not exist.")
+    return {"cors": data.get("cors", []), "kind": "storage#bucket", "id": bucket}
+
+
+@app.put("/storage/v1/b/{bucket}/cors")
+async def set_bucket_cors(bucket: str, request: Request):
+    store = _store()
+    data = store.get("buckets", bucket)
+    if data is None:
+        raise GCPError(404, "The specified bucket does not exist.")
+    body = await request.json()
+    data["cors"] = body.get("cors", [])
+    from cloudbox.services.gcs.models import _now_rfc3339
+    data["updated"] = _now_rfc3339()
+    data["metageneration"] = str(int(data.get("metageneration", "1")) + 1)
+    store.set("buckets", bucket, data)
+    return {"cors": data["cors"], "kind": "storage#bucket", "id": bucket}
+
+
+@app.delete("/storage/v1/b/{bucket}/cors", status_code=204)
+async def delete_bucket_cors(bucket: str):
+    store = _store()
+    data = store.get("buckets", bucket)
+    if data is None:
+        raise GCPError(404, "The specified bucket does not exist.")
+    data["cors"] = []
+    from cloudbox.services.gcs.models import _now_rfc3339
+    data["updated"] = _now_rfc3339()
+    data["metageneration"] = str(int(data.get("metageneration", "1")) + 1)
+    store.set("buckets", bucket, data)
     return Response(status_code=204)
 
 

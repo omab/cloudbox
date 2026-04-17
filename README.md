@@ -389,7 +389,7 @@ Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
 | Bucket / object ACLs | ❌ | All requests succeed regardless of caller identity |
 | IAM policies (`getIamPolicy` / `setIamPolicy`) | ❌ | |
 | Signed URLs | ❌ | |
-| CORS configuration | ❌ | |
+| CORS configuration | ✅ | Per-bucket `cors` list; GET/PUT `/b/{bucket}/cors`; also settable via `PATCH /b/{bucket}` |
 | Bucket retention policies / locks | ❌ | |
 
 ### Pub/Sub

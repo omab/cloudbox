@@ -57,6 +57,7 @@ class BucketModel(BaseModel):
     etag: str = "CAE="
     labels: dict[str, str] = Field(default_factory=dict)
     lifecycle: Lifecycle | None = None
+    cors: list[dict] = Field(default_factory=list)
 
     def model_post_init(self, __context: Any) -> None:
         if not self.id:

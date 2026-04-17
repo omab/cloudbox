@@ -636,3 +636,59 @@ def test_if_metageneration_match_on_patch(gcs_client):
         json={"contentType": "text/plain"},
     )
     assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# CORS configuration
+# ---------------------------------------------------------------------------
+
+CORS_CONFIG = [
+    {
+        "origin": ["https://example.com", "https://app.example.com"],
+        "method": ["GET", "POST", "PUT"],
+        "responseHeader": ["Content-Type", "Authorization"],
+        "maxAgeSeconds": 3600,
+    }
+]
+
+
+def test_cors_set_and_get(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "cors1"})
+
+    r = gcs_client.put("/storage/v1/b/cors1/cors", json={"cors": CORS_CONFIG})
+    assert r.status_code == 200
+    assert r.json()["cors"] == CORS_CONFIG
+
+    r = gcs_client.get("/storage/v1/b/cors1/cors")
+    assert r.status_code == 200
+    assert r.json()["cors"] == CORS_CONFIG
+
+
+def test_cors_via_patch_bucket(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "cors2"})
+    r = gcs_client.patch("/storage/v1/b/cors2", json={"cors": CORS_CONFIG})
+    assert r.status_code == 200
+    assert r.json()["cors"] == CORS_CONFIG
+
+
+def test_cors_returned_in_bucket_get(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "cors3"})
+    gcs_client.put("/storage/v1/b/cors3/cors", json={"cors": CORS_CONFIG})
+    r = gcs_client.get("/storage/v1/b/cors3")
+    assert r.json()["cors"] == CORS_CONFIG
+
+
+def test_cors_delete(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "cors4"})
+    gcs_client.put("/storage/v1/b/cors4/cors", json={"cors": CORS_CONFIG})
+    r = gcs_client.delete("/storage/v1/b/cors4/cors")
+    assert r.status_code == 204
+    r = gcs_client.get("/storage/v1/b/cors4/cors")
+    assert r.json()["cors"] == []
+
+
+def test_cors_empty_by_default(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "cors5"})
+    r = gcs_client.get("/storage/v1/b/cors5/cors")
+    assert r.status_code == 200
+    assert r.json()["cors"] == []
