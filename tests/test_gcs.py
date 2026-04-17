@@ -502,3 +502,79 @@ def test_range_via_download_path(gcs_client):
     assert r.status_code == 206
     assert r.content == b"3456"
     assert r.headers["content-range"] == "bytes 3-6/10"
+
+
+# ---------------------------------------------------------------------------
+# Conditional requests
+# ---------------------------------------------------------------------------
+
+
+def test_if_match_success(gcs_client):
+    _upload(gcs_client, "cond1", "f.bin", b"data")
+    meta = gcs_client.get("/storage/v1/b/cond1/o/f.bin").json()
+    etag = meta["etag"]
+    r = gcs_client.get("/storage/v1/b/cond1/o/f.bin?alt=media", headers={"if-match": etag})
+    assert r.status_code == 200
+
+
+def test_if_match_mismatch_returns_412(gcs_client):
+    _upload(gcs_client, "cond2", "f.bin", b"data")
+    r = gcs_client.get("/storage/v1/b/cond2/o/f.bin?alt=media", headers={"if-match": "wrong-etag"})
+    assert r.status_code == 412
+
+
+def test_if_none_match_star_returns_412_when_exists(gcs_client):
+    _upload(gcs_client, "cond3", "f.bin", b"data")
+    r = gcs_client.get("/storage/v1/b/cond3/o/f.bin?alt=media", headers={"if-none-match": "*"})
+    assert r.status_code == 412
+
+
+def test_if_none_match_etag_returns_304_when_matches(gcs_client):
+    _upload(gcs_client, "cond4", "f.bin", b"data")
+    etag = gcs_client.get("/storage/v1/b/cond4/o/f.bin").json()["etag"]
+    r = gcs_client.get("/storage/v1/b/cond4/o/f.bin?alt=media", headers={"if-none-match": etag})
+    assert r.status_code == 304
+
+
+def test_if_generation_match_on_delete(gcs_client):
+    _upload(gcs_client, "cond5", "f.bin", b"data")
+    gen = gcs_client.get("/storage/v1/b/cond5/o/f.bin").json()["generation"]
+    r = gcs_client.delete(f"/storage/v1/b/cond5/o/f.bin?ifGenerationMatch=999")
+    assert r.status_code == 412
+    r = gcs_client.delete(f"/storage/v1/b/cond5/o/f.bin?ifGenerationMatch={gen}")
+    assert r.status_code == 204
+
+
+def test_if_generation_match_zero_on_upload_prevents_overwrite(gcs_client):
+    _upload(gcs_client, "cond6", "f.bin", b"original")
+    r = gcs_client.post(
+        "/upload/storage/v1/b/cond6/o?name=f.bin&uploadType=media&ifGenerationMatch=0",
+        content=b"new", headers={"content-type": "text/plain"},
+    )
+    assert r.status_code == 412
+    assert gcs_client.get("/storage/v1/b/cond6/o/f.bin?alt=media").content == b"original"
+
+
+def test_if_generation_match_zero_on_upload_allows_new_object(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "cond7"})
+    r = gcs_client.post(
+        "/upload/storage/v1/b/cond7/o?name=new.bin&uploadType=media&ifGenerationMatch=0",
+        content=b"hello", headers={"content-type": "text/plain"},
+    )
+    assert r.status_code == 200
+
+
+def test_if_metageneration_match_on_patch(gcs_client):
+    _upload(gcs_client, "cond8", "f.bin", b"data")
+    meta = gcs_client.get("/storage/v1/b/cond8/o/f.bin").json()
+    metagen = meta["metageneration"]
+    r = gcs_client.patch(
+        f"/storage/v1/b/cond8/o/f.bin?ifMetagenerationMatch=999",
+        json={"contentType": "text/plain"},
+    )
+    assert r.status_code == 412
+    r = gcs_client.patch(
+        f"/storage/v1/b/cond8/o/f.bin?ifMetagenerationMatch={metagen}",
+        json={"contentType": "text/plain"},
+    )
+    assert r.status_code == 200

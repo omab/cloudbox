@@ -341,7 +341,7 @@ Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
 | MD5 hash + CRC32c checksum | ✅ | Computed and returned on upload |
 | ETag | ✅ | MD5-based |
 | Byte-range downloads (`Range` header) | ✅ | `bytes=start-end`, `bytes=start-`, `bytes=-suffix`; returns 206 with `Content-Range`; 416 on unsatisfiable range |
-| Conditional requests (`If-Match`, `If-None-Match`) | ❌ | |
+| Conditional requests (`If-Match`, `If-None-Match`, `ifGenerationMatch`, `ifMetagenerationMatch`) | ✅ | Checked on GET, PATCH, DELETE, and upload; `ifGenerationMatch=0` for create-only writes |
 | Pub/Sub notifications (bucket events) | ✅ | `OBJECT_FINALIZE`, `OBJECT_DELETE`, `OBJECT_METADATA_UPDATE` |
 | Notification config CRUD | ✅ | |
 | Object lifecycle rules | ✅ | `Delete` and `SetStorageClass` actions; `age`, `createdBefore`, `matchesStorageClass` conditions; enforced on list |

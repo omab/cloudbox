@@ -13,6 +13,48 @@ from fastapi import FastAPI, Header, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 
+def _check_preconditions(
+    obj: dict | None,
+    if_match: str | None = None,
+    if_none_match: str | None = None,
+    if_generation_match: str | None = None,
+    if_metageneration_match: str | None = None,
+) -> None:
+    """Raise GCPError(412) or GCPError(304) if a precondition is not satisfied.
+
+    if_match / if_none_match compare against the object's etag.
+    if_generation_match / if_metageneration_match compare against the
+    object's generation / metageneration.  A value of "0" for
+    if_generation_match means "object must not exist".
+    """
+    etag = obj.get("etag", "") if obj else ""
+    generation = str(obj.get("generation", "")) if obj else ""
+    metageneration = str(obj.get("metageneration", "")) if obj else ""
+
+    if if_generation_match is not None:
+        expected = str(if_generation_match)
+        if expected == "0":
+            if obj is not None:
+                raise GCPError(412, "Precondition Failed: object already exists")
+        else:
+            if obj is None or generation != expected:
+                raise GCPError(412, f"Precondition Failed: generation mismatch")
+
+    if if_metageneration_match is not None:
+        if obj is None or metageneration != str(if_metageneration_match):
+            raise GCPError(412, "Precondition Failed: metageneration mismatch")
+
+    if if_match is not None:
+        if obj is None or (if_match != "*" and etag != if_match):
+            raise GCPError(412, "Precondition Failed: If-Match")
+
+    if if_none_match is not None:
+        if if_none_match == "*" and obj is not None:
+            raise GCPError(412, "Precondition Failed: If-None-Match")
+        if obj is not None and etag == if_none_match:
+            raise GCPError(304, "Not Modified")
+
+
 def _parse_range(range_header: str, total: int) -> tuple[int, int] | None:
     """Parse a Range header and return (start, end) byte positions (inclusive).
 
@@ -167,6 +209,7 @@ async def upload_object(
     request: Request,
     name: str = Query(default=""),
     uploadType: str = Query(default="media"),
+    ifGenerationMatch: str = Query(default=""),
     content_type: Annotated[str | None, Header(alias="content-type")] = None,
     x_upload_content_type: Annotated[str | None, Header(alias="x-upload-content-type")] = None,
     x_upload_content_length: Annotated[str | None, Header(alias="x-upload-content-length")] = None,
@@ -182,6 +225,7 @@ async def upload_object(
             request, store, bucket, name,
             x_upload_content_type or ct,
             int(x_upload_content_length) if x_upload_content_length else None,
+            if_generation_match=ifGenerationMatch or None,
         )
 
     if uploadType == "multipart":
@@ -199,6 +243,11 @@ async def upload_object(
             raise GCPError(400, "name is required for uploadType=media")
         body_bytes = await request.body()
 
+    if ifGenerationMatch:
+        _check_preconditions(
+            store.get("objects", f"{bucket}/{obj_name}"),
+            if_generation_match=ifGenerationMatch,
+        )
     return _store_object(store, bucket, obj_name, body_bytes, ct)
 
 
@@ -209,6 +258,7 @@ async def _initiate_resumable(
     name: str,
     content_type: str,
     total_size: int | None,
+    if_generation_match: str | None = None,
 ) -> Response:
     """Initiate a resumable upload session; returns 200 with Location header."""
     try:
@@ -229,6 +279,7 @@ async def _initiate_resumable(
         "content_type": ct,
         "total_size": total_size,
         "received": 0,
+        "if_generation_match": if_generation_match,
     }
     store.set("resumable_sessions", upload_id, session)
     store.set("resumable_bodies", upload_id, b"")
@@ -291,6 +342,12 @@ async def upload_resumable_chunk(
 
     # Finalize when all data is received
     if total_size is None or len(accumulated) >= total_size:
+        gen_match = session.get("if_generation_match")
+        if gen_match:
+            _check_preconditions(
+                store.get("objects", f"{bucket}/{session['name']}"),
+                if_generation_match=gen_match,
+            )
         obj = _store_object(
             store, bucket, session["name"], accumulated, session["content_type"]
         )
@@ -550,13 +607,25 @@ async def get_object_metadata(
     bucket: str,
     object_name: str,
     alt: str = Query(default=""),
+    ifGenerationMatch: str = Query(default=""),
+    ifMetagenerationMatch: str = Query(default=""),
     range: Annotated[str | None, Header(alias="range")] = None,
+    if_match: Annotated[str | None, Header(alias="if-match")] = None,
+    if_none_match: Annotated[str | None, Header(alias="if-none-match")] = None,
 ):
     store = _store()
     key = f"{bucket}/{object_name}"
     data = store.get("objects", key)
     if data is None:
         raise GCPError(404, f"No such object: {bucket}/{object_name}")
+
+    _check_preconditions(
+        data,
+        if_match=if_match,
+        if_none_match=if_none_match,
+        if_generation_match=ifGenerationMatch or None,
+        if_metageneration_match=ifMetagenerationMatch or None,
+    )
 
     if alt == "media":
         body = store.get("bodies", key) or b""
@@ -583,12 +652,27 @@ async def download_object(
 
 
 @app.patch("/storage/v1/b/{bucket}/o/{object_name:path}")
-async def update_object_metadata(bucket: str, object_name: str, request: Request):
+async def update_object_metadata(
+    bucket: str,
+    object_name: str,
+    request: Request,
+    ifGenerationMatch: str = Query(default=""),
+    ifMetagenerationMatch: str = Query(default=""),
+    if_match: Annotated[str | None, Header(alias="if-match")] = None,
+    if_none_match: Annotated[str | None, Header(alias="if-none-match")] = None,
+):
     store = _store()
     key = f"{bucket}/{object_name}"
     data = store.get("objects", key)
     if data is None:
         raise GCPError(404, f"No such object: {bucket}/{object_name}")
+    _check_preconditions(
+        data,
+        if_match=if_match,
+        if_none_match=if_none_match,
+        if_generation_match=ifGenerationMatch or None,
+        if_metageneration_match=ifMetagenerationMatch or None,
+    )
     body = await request.json()
     # Merge allowed mutable fields
     for field in ("contentType", "metadata", "contentDisposition", "cacheControl", "contentEncoding"):
@@ -603,12 +687,26 @@ async def update_object_metadata(bucket: str, object_name: str, request: Request
 
 
 @app.delete("/storage/v1/b/{bucket}/o/{object_name:path}", status_code=204)
-async def delete_object(bucket: str, object_name: str):
+async def delete_object(
+    bucket: str,
+    object_name: str,
+    ifGenerationMatch: str = Query(default=""),
+    ifMetagenerationMatch: str = Query(default=""),
+    if_match: Annotated[str | None, Header(alias="if-match")] = None,
+    if_none_match: Annotated[str | None, Header(alias="if-none-match")] = None,
+):
     store = _store()
     key = f"{bucket}/{object_name}"
     obj_data = store.get("objects", key)
     if obj_data is None:
         raise GCPError(404, f"No such object: {bucket}/{object_name}")
+    _check_preconditions(
+        obj_data,
+        if_match=if_match,
+        if_none_match=if_none_match,
+        if_generation_match=ifGenerationMatch or None,
+        if_metageneration_match=ifMetagenerationMatch or None,
+    )
     store.delete("objects", key)
     store.delete("bodies", key)
     _fire_notifications(store, bucket, "OBJECT_DELETE", obj_data)
