@@ -24,7 +24,7 @@ Optional:
 EOF
 }
 
-PROJECT="${LOCALGCP_PROJECT:-my-gcp-project}"
+PROJECT="${CLOUDBOX_PROJECT:-my-gcp-project}"
 TOPIC=""
 SUBSCRIPTION=""
 

@@ -330,8 +330,8 @@ def test_publish_without_schema_settings_no_validation(pubsub_client):
 # ---------------------------------------------------------------------------
 
 async def test_grpc_create_and_get_schema(reset_stores):
-    from localgcp.services.pubsub.grpc_server import _create_schema, _get_schema_grpc
-    from localgcp.services.pubsub.store import get_store
+    from cloudbox.services.pubsub.grpc_server import _create_schema, _get_schema_grpc
+    from cloudbox.services.pubsub.store import get_store
     from google.pubsub_v1.types import schema as st
 
     store = get_store()
@@ -356,7 +356,7 @@ async def test_grpc_create_and_get_schema(reset_stores):
 
 
 async def test_grpc_validate_schema_valid(reset_stores):
-    from localgcp.services.pubsub.grpc_server import _validate_schema_grpc
+    from cloudbox.services.pubsub.grpc_server import _validate_schema_grpc
     from google.pubsub_v1.types import schema as st
 
     class MockContext:
@@ -370,7 +370,7 @@ async def test_grpc_validate_schema_valid(reset_stores):
 
 
 async def test_grpc_validate_schema_invalid_raises(reset_stores):
-    from localgcp.services.pubsub.grpc_server import _validate_schema_grpc
+    from cloudbox.services.pubsub.grpc_server import _validate_schema_grpc
     from google.pubsub_v1.types import schema as st
     import pytest
 
@@ -385,7 +385,7 @@ async def test_grpc_validate_schema_invalid_raises(reset_stores):
 
 
 async def test_grpc_validate_message_valid(reset_stores):
-    from localgcp.services.pubsub.grpc_server import _validate_message_grpc
+    from cloudbox.services.pubsub.grpc_server import _validate_message_grpc
     from google.pubsub_v1.types import schema as st
 
     class MockContext:

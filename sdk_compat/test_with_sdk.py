@@ -1,8 +1,8 @@
 """End-to-end smoke tests using the real google-cloud-* SDKs.
 
-These tests require LocalGCP to be running. Start it first:
-    uv run python -m localgcp.main
-    # or: docker run -p 4443:4443 -p 8080:8080 -p 8085:8085 -p 8090:8090 -p 8123:8123 localgcp
+These tests require Cloudbox to be running. Start it first:
+    uv run python -m cloudbox.main
+    # or: docker run -p 4443:4443 -p 8080:8080 -p 8085:8085 -p 8090:8090 -p 8123:8123 cloudbox
 
 Then run:
     uv run python sdk_compat/test_with_sdk.py
@@ -111,7 +111,7 @@ def test_secret_manager() -> None:
 
 
 if __name__ == "__main__":
-    print("LocalGCP SDK compatibility smoke tests")
+    print("Cloudbox SDK compatibility smoke tests")
     print("=" * 40)
     try:
         test_gcs()

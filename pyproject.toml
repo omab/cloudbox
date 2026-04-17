@@ -1,5 +1,5 @@
 [project]
-name = "localgcp"
+name = "cloudbox"
 version = "0.2.0"
 description = "Local emulator for GCP services"
 readme = "README.md"
@@ -19,9 +19,9 @@ dependencies = [
 ]
 
 [project.scripts]
-localgcp = "localgcp.main:main"
-gcloudlocal = "localgcp.gcloudlocal:main"
-gsutillocal = "localgcp.gsutillocal:main"
+cloudbox = "cloudbox.main:main"
+gcloudlocal = "cloudbox.gcloudlocal:main"
+gsutillocal = "cloudbox.gsutillocal:main"
 
 [dependency-groups]
 dev = [
@@ -46,7 +46,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["localgcp"]
+packages = ["cloudbox"]
 
 [tool.hatch.build.targets.sdist]
 exclude = [
@@ -60,15 +60,15 @@ exclude = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "--cov=localgcp --cov-report=term-missing --cov-report=html:htmlcov --cov-report=xml"
+addopts = "--cov=cloudbox --cov-report=term-missing --cov-report=html:htmlcov --cov-report=xml"
 
 [tool.coverage.run]
-source = ["localgcp"]
+source = ["cloudbox"]
 omit = [
-    "localgcp/main.py",
-    "localgcp/admin/*",
-    "localgcp/gcloudlocal.py",
-    "localgcp/services/pubsub/grpc_server.py",
+    "cloudbox/main.py",
+    "cloudbox/admin/*",
+    "cloudbox/gcloudlocal.py",
+    "cloudbox/services/pubsub/grpc_server.py",
 ]
 
 [tool.coverage.report]

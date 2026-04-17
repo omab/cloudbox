@@ -26,19 +26,19 @@ def _job(name="test-job", state="ENABLED", last_attempt="", schedule="* * * * *"
 
 
 def test_parse_dt_valid():
-    from localgcp.services.scheduler.worker import _parse_dt
+    from cloudbox.services.scheduler.worker import _parse_dt
     dt = _parse_dt("2024-01-15T12:00:00Z")
     assert dt is not None
     assert dt.year == 2024
 
 
 def test_parse_dt_empty_returns_none():
-    from localgcp.services.scheduler.worker import _parse_dt
+    from cloudbox.services.scheduler.worker import _parse_dt
     assert _parse_dt("") is None
 
 
 def test_parse_dt_invalid_returns_none():
-    from localgcp.services.scheduler.worker import _parse_dt
+    from cloudbox.services.scheduler.worker import _parse_dt
     assert _parse_dt("not-a-date") is None
 
 
@@ -48,14 +48,14 @@ def test_parse_dt_invalid_returns_none():
 
 
 def test_next_run_time_returns_future():
-    from localgcp.services.scheduler.worker import _next_run_time
+    from cloudbox.services.scheduler.worker import _next_run_time
     base = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     result = _next_run_time("* * * * *", base)
     assert result > base.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def test_next_run_time_invalid_schedule_returns_empty():
-    from localgcp.services.scheduler.worker import _next_run_time
+    from cloudbox.services.scheduler.worker import _next_run_time
     base = datetime.now(timezone.utc)
     result = _next_run_time("not a cron", base)
     assert result == ""
@@ -67,7 +67,7 @@ def test_next_run_time_invalid_schedule_returns_empty():
 
 
 async def test_dispatch_sends_request():
-    from localgcp.services.scheduler.worker import _dispatch
+    from cloudbox.services.scheduler.worker import _dispatch
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
@@ -83,7 +83,7 @@ async def test_dispatch_sends_request():
 
 
 async def test_dispatch_raises_on_4xx():
-    from localgcp.services.scheduler.worker import _dispatch
+    from cloudbox.services.scheduler.worker import _dispatch
     import pytest
 
     mock_resp = MagicMock()
@@ -98,7 +98,7 @@ async def test_dispatch_raises_on_4xx():
 
 async def test_dispatch_sends_body_and_headers():
     import base64
-    from localgcp.services.scheduler.worker import _dispatch
+    from cloudbox.services.scheduler.worker import _dispatch
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
@@ -124,8 +124,8 @@ async def test_dispatch_sends_body_and_headers():
 
 
 async def test_tick_dispatches_due_job(reset_stores):
-    from localgcp.services.scheduler import store as sched_store
-    from localgcp.services.scheduler.worker import _tick
+    from cloudbox.services.scheduler import store as sched_store
+    from cloudbox.services.scheduler.worker import _tick
 
     store = sched_store.get_store()
     job = _job(last_attempt="")  # never run → always due
@@ -145,8 +145,8 @@ async def test_tick_dispatches_due_job(reset_stores):
 
 
 async def test_tick_skips_paused_job(reset_stores):
-    from localgcp.services.scheduler import store as sched_store
-    from localgcp.services.scheduler.worker import _tick
+    from cloudbox.services.scheduler import store as sched_store
+    from cloudbox.services.scheduler.worker import _tick
 
     store = sched_store.get_store()
     job = _job(state="PAUSED")
@@ -161,8 +161,8 @@ async def test_tick_skips_paused_job(reset_stores):
 
 
 async def test_tick_records_error_on_failed_dispatch(reset_stores):
-    from localgcp.services.scheduler import store as sched_store
-    from localgcp.services.scheduler.worker import _tick
+    from cloudbox.services.scheduler import store as sched_store
+    from cloudbox.services.scheduler.worker import _tick
 
     store = sched_store.get_store()
     job = _job(last_attempt="")
@@ -178,8 +178,8 @@ async def test_tick_records_error_on_failed_dispatch(reset_stores):
 
 
 async def test_tick_skips_not_yet_due_job(reset_stores):
-    from localgcp.services.scheduler import store as sched_store
-    from localgcp.services.scheduler.worker import _tick
+    from cloudbox.services.scheduler import store as sched_store
+    from cloudbox.services.scheduler.worker import _tick
 
     store = sched_store.get_store()
     # Last attempt was 5 seconds ago, schedule is hourly → not due
@@ -196,8 +196,8 @@ async def test_tick_skips_not_yet_due_job(reset_stores):
 
 
 async def test_tick_skips_job_without_http_target(reset_stores):
-    from localgcp.services.scheduler import store as sched_store
-    from localgcp.services.scheduler.worker import _tick
+    from cloudbox.services.scheduler import store as sched_store
+    from cloudbox.services.scheduler.worker import _tick
 
     store = sched_store.get_store()
     job = _job()

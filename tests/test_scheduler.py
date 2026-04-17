@@ -90,7 +90,7 @@ def test_run_job_dispatches_http(scheduler_client):
     """Force-running a job POSTs to its httpTarget URI."""
     scheduler_client.post(BASE, json=JOB_BODY)
 
-    with patch("localgcp.services.scheduler.worker._dispatch", new_callable=AsyncMock):
+    with patch("cloudbox.services.scheduler.worker._dispatch", new_callable=AsyncMock):
         r = scheduler_client.post(f"{BASE}/my-job:run")
 
     assert r.status_code == 200
@@ -102,7 +102,7 @@ def test_run_job_records_error_on_failure(scheduler_client):
     scheduler_client.post(BASE, json=JOB_BODY)
 
     with patch(
-        "localgcp.services.scheduler.worker._dispatch",
+        "cloudbox.services.scheduler.worker._dispatch",
         new_callable=AsyncMock,
         side_effect=Exception("connection refused"),
     ):
@@ -118,7 +118,7 @@ def test_run_job_records_error_on_failure(scheduler_client):
 
 
 def test_worker_is_due_never_run():
-    from localgcp.services.scheduler.worker import _is_due
+    from cloudbox.services.scheduler.worker import _is_due
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     # Job that has never run is always due
@@ -126,7 +126,7 @@ def test_worker_is_due_never_run():
 
 
 def test_worker_is_due_after_interval():
-    from localgcp.services.scheduler.worker import _is_due
+    from cloudbox.services.scheduler.worker import _is_due
     from datetime import datetime, timezone, timedelta
     # Last run 2 minutes ago, schedule is every minute → due
     last = (datetime.now(timezone.utc) - timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -135,7 +135,7 @@ def test_worker_is_due_after_interval():
 
 
 def test_worker_not_due_just_ran():
-    from localgcp.services.scheduler.worker import _is_due
+    from cloudbox.services.scheduler.worker import _is_due
     from datetime import datetime, timezone, timedelta
     # Last run 5 seconds ago, schedule is every hour → not due
     last = (datetime.now(timezone.utc) - timedelta(seconds=5)).strftime("%Y-%m-%dT%H:%M:%SZ")

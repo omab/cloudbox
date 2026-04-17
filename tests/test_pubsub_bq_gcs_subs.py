@@ -33,7 +33,7 @@ def _setup_topic(client):
 
 
 def _setup_bq(dataset=DATASET, table=TABLE):
-    from localgcp.services.bigquery.engine import get_engine
+    from cloudbox.services.bigquery.engine import get_engine
     engine = get_engine()
     try:
         engine.create_dataset(PROJECT, dataset, {})
@@ -51,7 +51,7 @@ def _setup_bq(dataset=DATASET, table=TABLE):
 
 
 def _setup_bq_with_metadata(dataset=DATASET, table="meta_tbl"):
-    from localgcp.services.bigquery.engine import get_engine
+    from cloudbox.services.bigquery.engine import get_engine
     engine = get_engine()
     try:
         engine.create_dataset(PROJECT, dataset, {})
@@ -73,8 +73,8 @@ def _setup_bq_with_metadata(dataset=DATASET, table="meta_tbl"):
 
 
 def _setup_gcs():
-    from localgcp.services.gcs.store import get_store as get_gcs_store
-    from localgcp.services.gcs.models import BucketModel
+    from cloudbox.services.gcs.store import get_store as get_gcs_store
+    from cloudbox.services.gcs.models import BucketModel
     gcs_store = get_gcs_store()
     bucket = BucketModel(name=GCS_BUCKET)
     gcs_store.set("buckets", GCS_BUCKET, bucket.model_dump())
@@ -174,7 +174,7 @@ def test_bq_subscription_write_metadata(pubsub_client):
 def test_bq_subscription_use_topic_schema(pubsub_client):
     """useTopicSchema decodes message JSON and maps to table columns."""
     _setup_topic(pubsub_client)
-    from localgcp.services.bigquery.engine import get_engine
+    from cloudbox.services.bigquery.engine import get_engine
     engine = get_engine()
     try:
         engine.create_dataset(PROJECT, "schema_ds", {})
@@ -209,7 +209,7 @@ def test_bq_subscription_use_topic_schema(pubsub_client):
 def test_bq_subscription_drop_unknown_fields(pubsub_client):
     """dropUnknownFields strips columns not in the table schema."""
     _setup_topic(pubsub_client)
-    from localgcp.services.bigquery.engine import get_engine
+    from cloudbox.services.bigquery.engine import get_engine
     engine = get_engine()
     try:
         engine.create_dataset(PROJECT, "drop_ds", {})

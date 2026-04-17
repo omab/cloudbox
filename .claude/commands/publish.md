@@ -1,4 +1,4 @@
-# Publish localgcp to PyPI
+# Publish cloudbox to PyPI
 
 Bump the version, tag the release, and publish the package to PyPI.
 
@@ -26,7 +26,7 @@ Edit `pyproject.toml`: replace the current version string with the new version.
 
 ### 4. Rebuild the package
 
-Run `uv build` and confirm both `dist/localgcp-<new_version>.tar.gz` and `dist/localgcp-<new_version>-py3-none-any.whl` are produced successfully.
+Run `uv build` and confirm both `dist/cloudbox-<new_version>.tar.gz` and `dist/cloudbox-<new_version>-py3-none-any.whl` are produced successfully.
 
 ### 5. Commit and tag
 
@@ -55,6 +55,6 @@ If publish fails due to missing credentials, tell the user to set `UV_PUBLISH_TO
 Print a summary:
 - Previous version → new version
 - Git tag created
-- PyPI URL: `https://pypi.org/project/localgcp/<new_version>/`
+- PyPI URL: `https://pypi.org/project/cloudbox/<new_version>/`
 
 Do not push the commit or tag to the remote — leave that for the user to do with `git push && git push --tags`.

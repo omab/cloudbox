@@ -46,14 +46,14 @@ def _setup_task(store, qid="test-q", tid="task-1", url="http://example.com/work"
 
 
 def test_parse_dt_valid():
-    from localgcp.services.tasks.worker import _parse_dt
+    from cloudbox.services.tasks.worker import _parse_dt
     dt = _parse_dt("2024-06-01T10:00:00")
     assert dt.year == 2024
     assert dt.tzinfo == timezone.utc
 
 
 def test_parse_dt_with_microseconds():
-    from localgcp.services.tasks.worker import _parse_dt
+    from cloudbox.services.tasks.worker import _parse_dt
     dt = _parse_dt("2024-06-01T10:00:00.123456")
     assert dt.microsecond == 123456
 
@@ -64,8 +64,8 @@ def test_parse_dt_with_microseconds():
 
 
 async def test_dispatch_success_deletes_task(reset_stores):
-    from localgcp.services.tasks.worker import _dispatch
-    from localgcp.services.tasks.store import get_store
+    from cloudbox.services.tasks.worker import _dispatch
+    from cloudbox.services.tasks.store import get_store
 
     store = get_store()
     _setup_queue(store)
@@ -83,8 +83,8 @@ async def test_dispatch_success_deletes_task(reset_stores):
 
 
 async def test_dispatch_failure_increments_dispatch_count(reset_stores):
-    from localgcp.services.tasks.worker import _dispatch
-    from localgcp.services.tasks.store import get_store
+    from cloudbox.services.tasks.worker import _dispatch
+    from cloudbox.services.tasks.store import get_store
 
     store = get_store()
     _setup_queue(store, max_attempts=5)
@@ -104,8 +104,8 @@ async def test_dispatch_failure_increments_dispatch_count(reset_stores):
 
 
 async def test_dispatch_drops_task_after_max_attempts(reset_stores):
-    from localgcp.services.tasks.worker import _dispatch
-    from localgcp.services.tasks.store import get_store
+    from cloudbox.services.tasks.worker import _dispatch
+    from cloudbox.services.tasks.store import get_store
 
     store = get_store()
     _setup_queue(store, max_attempts=3)
@@ -124,8 +124,8 @@ async def test_dispatch_drops_task_after_max_attempts(reset_stores):
 
 
 async def test_dispatch_connection_error_keeps_task(reset_stores):
-    from localgcp.services.tasks.worker import _dispatch
-    from localgcp.services.tasks.store import get_store
+    from cloudbox.services.tasks.worker import _dispatch
+    from cloudbox.services.tasks.store import get_store
 
     store = get_store()
     _setup_queue(store)
@@ -141,8 +141,8 @@ async def test_dispatch_connection_error_keeps_task(reset_stores):
 
 
 async def test_dispatch_records_first_and_last_attempt(reset_stores):
-    from localgcp.services.tasks.worker import _dispatch
-    from localgcp.services.tasks.store import get_store
+    from cloudbox.services.tasks.worker import _dispatch
+    from cloudbox.services.tasks.store import get_store
 
     store = get_store()
     _setup_queue(store, max_attempts=5)
@@ -168,8 +168,8 @@ async def test_dispatch_records_first_and_last_attempt(reset_stores):
 
 
 async def test_tick_dispatches_ready_task(reset_stores):
-    from localgcp.services.tasks.worker import _tick
-    from localgcp.services.tasks.store import get_store
+    from cloudbox.services.tasks.worker import _tick
+    from cloudbox.services.tasks.store import get_store
 
     store = get_store()
     _setup_queue(store)
@@ -186,8 +186,8 @@ async def test_tick_dispatches_ready_task(reset_stores):
 
 
 async def test_tick_skips_future_task(reset_stores):
-    from localgcp.services.tasks.worker import _tick
-    from localgcp.services.tasks.store import get_store
+    from cloudbox.services.tasks.worker import _tick
+    from cloudbox.services.tasks.store import get_store
 
     store = get_store()
     _setup_queue(store)
@@ -202,8 +202,8 @@ async def test_tick_skips_future_task(reset_stores):
 
 
 async def test_tick_skips_paused_queue(reset_stores):
-    from localgcp.services.tasks.worker import _tick
-    from localgcp.services.tasks.store import get_store
+    from cloudbox.services.tasks.worker import _tick
+    from cloudbox.services.tasks.store import get_store
 
     store = get_store()
     _setup_queue(store, state="PAUSED")
@@ -219,8 +219,8 @@ async def test_tick_skips_paused_queue(reset_stores):
 
 async def test_tick_task_without_http_request_is_deleted(reset_stores):
     """Tasks with no httpRequest are silently dropped by the worker."""
-    from localgcp.services.tasks.worker import _tick
-    from localgcp.services.tasks.store import get_store
+    from cloudbox.services.tasks.worker import _tick
+    from cloudbox.services.tasks.store import get_store
 
     store = get_store()
     _setup_queue(store)

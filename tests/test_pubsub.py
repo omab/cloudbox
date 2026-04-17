@@ -95,7 +95,7 @@ def test_push_subscription_dispatches_to_endpoint(pubsub_client):
 
     data = base64.b64encode(b"push me").decode()
 
-    with patch("localgcp.services.pubsub.app._dispatch_push", new_callable=AsyncMock) as mock_push:
+    with patch("cloudbox.services.pubsub.app._dispatch_push", new_callable=AsyncMock) as mock_push:
         r = pubsub_client.post(f"/v1/{topic}:publish", json={"messages": [{"data": data}]})
         assert r.status_code == 200
 
@@ -137,7 +137,7 @@ def test_push_subscription_not_pullable(pubsub_client):
 
     data = base64.b64encode(b"fanout").decode()
 
-    with patch("localgcp.services.pubsub.app._dispatch_push", new_callable=AsyncMock):
+    with patch("cloudbox.services.pubsub.app._dispatch_push", new_callable=AsyncMock):
         pubsub_client.post(f"/v1/{topic}:publish", json={"messages": [{"data": data}]})
 
     # Pull sub receives the message
@@ -145,14 +145,14 @@ def test_push_subscription_not_pullable(pubsub_client):
     assert len(r.json()["receivedMessages"]) == 1
 
     # Push sub has nothing pending in its queue (message moved to unacked for dispatch)
-    from localgcp.services.pubsub.store import queue_depth
+    from cloudbox.services.pubsub.store import queue_depth
     assert queue_depth(push_sub) == 0
 
 
 async def test_push_dispatch_acks_message_on_success():
     """_dispatch_push acks the message when the endpoint returns 2xx."""
-    from localgcp.services.pubsub import store as ps_store
-    from localgcp.services.pubsub.app import _dispatch_push
+    from cloudbox.services.pubsub import store as ps_store
+    from cloudbox.services.pubsub.app import _dispatch_push
 
     sub_name = f"{PROJECT}/subscriptions/ack-push-sub"
     ps_store.ensure_queue(sub_name)
@@ -168,18 +168,18 @@ async def test_push_dispatch_acks_message_on_success():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.post = AsyncMock(return_value=mock_resp)
 
-    with patch("localgcp.services.pubsub.app.httpx.AsyncClient", return_value=mock_client):
+    with patch("cloudbox.services.pubsub.app.httpx.AsyncClient", return_value=mock_client):
         await _dispatch_push("http://example.com/push", sub_name, ack_id, pulled_msg)
 
     # Message should be acked — no longer in unacked
-    from localgcp.services.pubsub.store import _unacked
+    from cloudbox.services.pubsub.store import _unacked
     assert ack_id not in _unacked.get(sub_name, {})
 
 
 async def test_push_dispatch_requeues_message_on_failure():
     """_dispatch_push nacks (requeues) the message when the endpoint returns non-2xx."""
-    from localgcp.services.pubsub import store as ps_store
-    from localgcp.services.pubsub.app import _dispatch_push
+    from cloudbox.services.pubsub import store as ps_store
+    from cloudbox.services.pubsub.app import _dispatch_push
 
     sub_name = f"{PROJECT}/subscriptions/nack-push-sub"
     ps_store.ensure_queue(sub_name)
@@ -195,7 +195,7 @@ async def test_push_dispatch_requeues_message_on_failure():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.post = AsyncMock(return_value=mock_resp)
 
-    with patch("localgcp.services.pubsub.app.httpx.AsyncClient", return_value=mock_client):
+    with patch("cloudbox.services.pubsub.app.httpx.AsyncClient", return_value=mock_client):
         await _dispatch_push("http://example.com/push", sub_name, ack_id, pulled_msg)
 
     # Deadline set to 0 → message immediately re-eligible; a subsequent pull should return it
@@ -223,7 +223,7 @@ def test_dead_letter_policy_routes_after_max_attempts(pubsub_client):
     data = base64.b64encode(b"die hard").decode()
     pubsub_client.post(f"/v1/{topic}:publish", json={"messages": [{"data": data}]})
 
-    from localgcp.services.pubsub import store as ps_store
+    from cloudbox.services.pubsub import store as ps_store
     import time
 
     # Simulate exceeding maxDeliveryAttempts by force-expiring ack deadlines
@@ -261,7 +261,7 @@ def test_retry_policy_delays_redelivery(pubsub_client):
     data = base64.b64encode(b"retry me").decode()
     pubsub_client.post(f"/v1/{topic}:publish", json={"messages": [{"data": data}]})
 
-    from localgcp.services.pubsub import store as ps_store
+    from cloudbox.services.pubsub import store as ps_store
 
     # First pull succeeds
     r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
@@ -292,7 +292,7 @@ def test_retry_policy_delivers_after_backoff(pubsub_client):
     data = base64.b64encode(b"no wait").decode()
     pubsub_client.post(f"/v1/{topic}:publish", json={"messages": [{"data": data}]})
 
-    from localgcp.services.pubsub import store as ps_store
+    from cloudbox.services.pubsub import store as ps_store
 
     r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
     ack_id = r.json()["receivedMessages"][0]["ackId"]
@@ -364,7 +364,7 @@ def test_filter_has_prefix(pubsub_client):
 
 def test_filter_not_and_or():
     """Unit test the filter evaluator for NOT, AND, OR."""
-    from localgcp.services.pubsub.filter import matches
+    from cloudbox.services.pubsub.filter import matches
 
     msg_red_large = {"attributes": {"color": "red", "size": "large"}}
     msg_blue_large = {"attributes": {"color": "blue", "size": "large"}}
@@ -498,7 +498,7 @@ def test_delivery_attempt_increments_on_requeue(pubsub_client):
     pubsub_client.put(f"/v1/{sub}", json={"name": sub, "topic": topic})
     pubsub_client.post(f"/v1/{topic}:publish", json={"messages": [{"data": "dA=="}]})
 
-    from localgcp.services.pubsub import store as ps_store
+    from cloudbox.services.pubsub import store as ps_store
 
     r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
     assert r.json()["receivedMessages"][0]["deliveryAttempt"] == 1
@@ -529,13 +529,13 @@ def test_delete_topic_removes_subscriptions(pubsub_client):
 
 def test_filter_invalid_expression_is_fail_open():
     """A malformed filter expression should be treated as a match (fail-open)."""
-    from localgcp.services.pubsub.filter import matches
+    from cloudbox.services.pubsub.filter import matches
     msg = {"attributes": {"color": "red"}}
     assert matches("this is not valid filter syntax %%", msg) is True
 
 
 def test_filter_hasprefix():
-    from localgcp.services.pubsub.filter import matches
+    from cloudbox.services.pubsub.filter import matches
     msg_match = {"attributes": {"env": "production-us"}}
     msg_no = {"attributes": {"env": "staging"}}
     assert matches('hasPrefix(attributes.env, "production")', msg_match) is True
@@ -543,14 +543,14 @@ def test_filter_hasprefix():
 
 
 def test_filter_unsupported_operator_is_fail_open():
-    from localgcp.services.pubsub.filter import matches
+    from cloudbox.services.pubsub.filter import matches
     # The parser raises on unsupported operators → fail-open
     msg = {"attributes": {"x": "1"}}
     assert matches('attributes.x != "1"', msg) is True
 
 
 def test_filter_parenthesized_expression():
-    from localgcp.services.pubsub.filter import matches
+    from cloudbox.services.pubsub.filter import matches
     msg = {"attributes": {"a": "1", "b": "2"}}
     assert matches('(attributes.a = "1" OR attributes.b = "3") AND attributes.b = "2"', msg) is True
 
@@ -561,14 +561,14 @@ def test_filter_parenthesized_expression():
 
 
 def test_create_snapshot_missing_subscription_returns_none():
-    from localgcp.services.pubsub.store import create_snapshot
+    from cloudbox.services.pubsub.store import create_snapshot
     result = create_snapshot("projects/p/snapshots/s", "projects/p/subscriptions/nonexistent")
     assert result is None
 
 
 def test_retained_count_and_unacked_count(pubsub_client):
     """Exercise retained_count and unacked_count helpers."""
-    from localgcp.services.pubsub.store import retained_count, unacked_count
+    from cloudbox.services.pubsub.store import retained_count, unacked_count
     topic = f"{PROJECT}/topics/cnt-topic"
     sub = f"{PROJECT}/subscriptions/cnt-sub"
 

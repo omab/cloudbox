@@ -1,7 +1,7 @@
-# LocalGCP
+# Cloudbox
 
-[![Tests](https://github.com/omab/localgcp/actions/workflows/tests.yml/badge.svg)](https://github.com/omab/localgcp/actions/workflows/tests.yml)
-[![Coverage](https://raw.githubusercontent.com/omab/localgcp/main/coverage.svg)](https://github.com/omab/localgcp/actions/workflows/tests.yml)
+[![Tests](https://github.com/omab/cloudbox/actions/workflows/tests.yml/badge.svg)](https://github.com/omab/cloudbox/actions/workflows/tests.yml)
+[![Coverage](https://raw.githubusercontent.com/omab/cloudbox/main/coverage.svg)](https://github.com/omab/cloudbox/actions/workflows/tests.yml)
 
 A local emulator for Google Cloud Platform services — like LocalStack, but for GCP.
 
@@ -34,7 +34,7 @@ Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cl
 
 ## About this project
 
-LocalGCP is an experiment in LLM-driven development. The entire codebase — services, tests, CLI tools, admin UI, and documentation — was written through an iterative conversation with [Claude Code](https://claude.ai/code), Anthropic's AI coding assistant, with no manual code authoring by the human developer.
+Cloudbox is an experiment in LLM-driven development. The entire codebase — services, tests, CLI tools, admin UI, and documentation — was written through an iterative conversation with [Claude Code](https://claude.ai/code), Anthropic's AI coding assistant, with no manual code authoring by the human developer.
 
 The goal is twofold: to explore how far AI-assisted development can go on a non-trivial engineering project, and to produce something genuinely useful for engineers who want to run GCP-dependent services locally without real credentials or network access.
 
@@ -72,9 +72,9 @@ Requires Python 3.12+ and [uv](https://github.com/astral-sh/uv).
 
 ```bash
 uv sync
-uv run python -m localgcp.main
+uv run python -m cloudbox.main
 # or
-uv run localgcp
+uv run cloudbox
 ```
 
 ## Configuration
@@ -83,26 +83,26 @@ All settings are controlled via environment variables:
 
 | Variable                      | Default        | Description                                         |
 |-------------------------------|----------------|-----------------------------------------------------|
-| `LOCALGCP_PROJECT`            | `local-project`| Default GCP project ID                              |
-| `LOCALGCP_LOCATION`           | `us-central1`  | Default GCP region                                  |
-| `LOCALGCP_DATA_DIR`           | *(unset)*      | Directory for JSON persistence; in-memory if unset  |
-| `LOCALGCP_HOST`               | `0.0.0.0`      | Bind address                                        |
-| `LOCALGCP_LOG_LEVEL`          | `info`         | Log level (`debug`, `info`, `warning`, …)           |
-| `LOCALGCP_GCS_PORT`           | `4443`         | Cloud Storage port                                  |
-| `LOCALGCP_PUBSUB_PORT`        | `8085`         | Pub/Sub gRPC port                                   |
-| `LOCALGCP_PUBSUB_REST_PORT`   | `8086`         | Pub/Sub REST port                                   |
-| `LOCALGCP_FIRESTORE_PORT`     | `8080`         | Firestore port                                      |
-| `LOCALGCP_SECRETMANAGER_PORT` | `8090`         | Secret Manager port                                 |
-| `LOCALGCP_TASKS_PORT`         | `8123`         | Cloud Tasks port                                    |
-| `LOCALGCP_BIGQUERY_PORT`      | `9050`         | BigQuery port                                       |
-| `LOCALGCP_SCHEDULER_PORT`     | `8091`         | Cloud Scheduler port                                |
-| `LOCALGCP_ADMIN_PORT`         | `8888`         | Admin UI port                                       |
+| `CLOUDBOX_PROJECT`            | `local-project`| Default GCP project ID                              |
+| `CLOUDBOX_LOCATION`           | `us-central1`  | Default GCP region                                  |
+| `CLOUDBOX_DATA_DIR`           | *(unset)*      | Directory for JSON persistence; in-memory if unset  |
+| `CLOUDBOX_HOST`               | `0.0.0.0`      | Bind address                                        |
+| `CLOUDBOX_LOG_LEVEL`          | `info`         | Log level (`debug`, `info`, `warning`, …)           |
+| `CLOUDBOX_GCS_PORT`           | `4443`         | Cloud Storage port                                  |
+| `CLOUDBOX_PUBSUB_PORT`        | `8085`         | Pub/Sub gRPC port                                   |
+| `CLOUDBOX_PUBSUB_REST_PORT`   | `8086`         | Pub/Sub REST port                                   |
+| `CLOUDBOX_FIRESTORE_PORT`     | `8080`         | Firestore port                                      |
+| `CLOUDBOX_SECRETMANAGER_PORT` | `8090`         | Secret Manager port                                 |
+| `CLOUDBOX_TASKS_PORT`         | `8123`         | Cloud Tasks port                                    |
+| `CLOUDBOX_BIGQUERY_PORT`      | `9050`         | BigQuery port                                       |
+| `CLOUDBOX_SCHEDULER_PORT`     | `8091`         | Cloud Scheduler port                                |
+| `CLOUDBOX_ADMIN_PORT`         | `8888`         | Admin UI port                                       |
 
-To enable data persistence across restarts, set `LOCALGCP_DATA_DIR` to a writable path (and mount it as a Docker volume if using containers).
+To enable data persistence across restarts, set `CLOUDBOX_DATA_DIR` to a writable path (and mount it as a Docker volume if using containers).
 
 ## Using the GCP SDK
 
-Point the official `google-cloud-*` SDK clients at LocalGCP using the helpers in `sdk_compat/clients.py`:
+Point the official `google-cloud-*` SDK clients at Cloudbox using the helpers in `sdk_compat/clients.py`:
 
 ```python
 from sdk_compat.clients import (
@@ -180,7 +180,7 @@ Global flags `-m` (parallel) and `-o` (boto options) are accepted and silently i
 
 ## `gcloudlocal` CLI
 
-`gcloudlocal` is a `gcloud`-compatible CLI installed as an entry point that targets the LocalGCP emulator. After `uv sync` it is available as:
+`gcloudlocal` is a `gcloud`-compatible CLI installed as an entry point that targets the Cloudbox emulator. After `uv sync` it is available as:
 
 ```bash
 uv run gcloudlocal [--project PROJECT] [--location LOCATION] [--format json] \
@@ -235,7 +235,7 @@ Supported operations:
 
 ## Cloud Scheduler
 
-Jobs are stored in memory (or persisted to `LOCALGCP_DATA_DIR`). A background worker polls every 30 seconds and fires HTTP requests via `httpTarget`. Job state transitions (enable/pause/resume) and force-run are supported.
+Jobs are stored in memory (or persisted to `CLOUDBOX_DATA_DIR`). A background worker polls every 30 seconds and fires HTTP requests via `httpTarget`. Job state transitions (enable/pause/resume) and force-run are supported.
 
 ```python
 from sdk_compat.clients import scheduler_client
@@ -272,7 +272,7 @@ Tests use `pytest-asyncio` with `asyncio_mode = "auto"`. Each test file covers o
 uv run python sdk_compat/test_with_sdk.py
 ```
 
-This requires LocalGCP to be running and the dev dependencies installed (`uv sync`).
+This requires Cloudbox to be running and the dev dependencies installed (`uv sync`).
 
 ### Helper scripts
 
@@ -285,12 +285,12 @@ The `bin/` directory contains shell scripts for common setup tasks:
 
 ## Architecture
 
-All state is stored in memory by default, using a `NamespacedStore` (`localgcp/core/store.py`). Each service is a standalone FastAPI application started concurrently by `localgcp/main.py` via uvicorn. Pub/Sub additionally runs a gRPC server on port 8085 (compatible with `PUBSUB_EMULATOR_HOST`). Cloud Scheduler runs a background asyncio worker that polls every 30 seconds.
+All state is stored in memory by default, using a `NamespacedStore` (`cloudbox/core/store.py`). Each service is a standalone FastAPI application started concurrently by `cloudbox/main.py` via uvicorn. Pub/Sub additionally runs a gRPC server on port 8085 (compatible with `PUBSUB_EMULATOR_HOST`). Cloud Scheduler runs a background asyncio worker that polls every 30 seconds.
 
 Every service module follows the same layout:
 
 ```
-localgcp/services/<service>/
+cloudbox/services/<service>/
     app.py      — FastAPI routes
     models.py   — Pydantic v2 models
     store.py    — NamespacedStore wrapper

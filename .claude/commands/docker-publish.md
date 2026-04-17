@@ -1,6 +1,6 @@
-# Publish localgcp Docker image to Docker Hub
+# Publish cloudbox Docker image to Docker Hub
 
-Build a multi-platform Docker image and push it to `omab/localgcp` on Docker Hub.
+Build a multi-platform Docker image and push it to `omab/cloudbox` on Docker Hub.
 
 ## Steps
 
@@ -8,7 +8,7 @@ Build a multi-platform Docker image and push it to `omab/localgcp` on Docker Hub
 
 Read the current version from `pyproject.toml` (the `version = "..."` line under `[project]`).
 
-The image will be tagged as both `omab/localgcp:<version>` and `omab/localgcp:latest`.
+The image will be tagged as both `omab/cloudbox:<version>` and `omab/cloudbox:latest`.
 
 If `$ARGUMENTS` is provided, use that as the version tag instead (e.g. `/docker-publish 0.2.0`).
 
@@ -41,8 +41,8 @@ docker buildx use multiplatform
 ```
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --tag omab/localgcp:<version> \
-  --tag omab/localgcp:latest \
+  --tag omab/cloudbox:<version> \
+  --tag omab/cloudbox:latest \
   --push \
   .
 ```
@@ -56,7 +56,7 @@ If the build fails, show the full error output. Common causes:
 ### 5. Verify the push
 
 ```
-docker manifest inspect omab/localgcp:<version>
+docker manifest inspect omab/cloudbox:<version>
 ```
 
 Confirm both `linux/amd64` and `linux/arm64` platforms are listed in the manifest.
@@ -64,6 +64,6 @@ Confirm both `linux/amd64` and `linux/arm64` platforms are listed in the manifes
 ### 6. Report
 
 Print a summary:
-- Image: `omab/localgcp:<version>` and `omab/localgcp:latest`
+- Image: `omab/cloudbox:<version>` and `omab/cloudbox:latest`
 - Platforms: `linux/amd64`, `linux/arm64`
-- Docker Hub URL: `https://hub.docker.com/r/omab/localgcp`
+- Docker Hub URL: `https://hub.docker.com/r/omab/cloudbox`

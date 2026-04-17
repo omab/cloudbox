@@ -128,6 +128,67 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudbox"
+version = "0.2.0"
+source = { editable = "." }
+dependencies = [
+    { name = "croniter" },
+    { name = "duckdb" },
+    { name = "fastapi" },
+    { name = "google-cloud-pubsub" },
+    { name = "grpcio" },
+    { name = "httpx" },
+    { name = "jinja2" },
+    { name = "pydantic" },
+    { name = "python-multipart" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "genbadge", extra = ["coverage"] },
+    { name = "google-cloud-bigquery" },
+    { name = "google-cloud-firestore" },
+    { name = "google-cloud-scheduler" },
+    { name = "google-cloud-secret-manager" },
+    { name = "google-cloud-storage" },
+    { name = "google-cloud-tasks" },
+    { name = "httpx" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "croniter", specifier = ">=1.3" },
+    { name = "duckdb", specifier = ">=1.5.2" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "google-cloud-pubsub", specifier = ">=2.21" },
+    { name = "grpcio", specifier = ">=1.60" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "jinja2", specifier = ">=3.1" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "python-multipart", specifier = ">=0.0.9" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "genbadge", extras = ["coverage"], specifier = ">=1.1" },
+    { name = "google-cloud-bigquery", specifier = ">=3.41.0" },
+    { name = "google-cloud-firestore", specifier = ">=2.16" },
+    { name = "google-cloud-scheduler", specifier = ">=2.19.0" },
+    { name = "google-cloud-secret-manager", specifier = ">=2.20" },
+    { name = "google-cloud-storage", specifier = ">=2.16" },
+    { name = "google-cloud-tasks", specifier = ">=2.16" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "pytest-asyncio", specifier = ">=0.23" },
+    { name = "pytest-cov", specifier = ">=5" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -652,67 +713,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67", size = 134899, upload-time = "2025-03-05T20:05:00.369Z" },
-]
-
-[[package]]
-name = "localgcp"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "croniter" },
-    { name = "duckdb" },
-    { name = "fastapi" },
-    { name = "google-cloud-pubsub" },
-    { name = "grpcio" },
-    { name = "httpx" },
-    { name = "jinja2" },
-    { name = "pydantic" },
-    { name = "python-multipart" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "genbadge", extra = ["coverage"] },
-    { name = "google-cloud-bigquery" },
-    { name = "google-cloud-firestore" },
-    { name = "google-cloud-scheduler" },
-    { name = "google-cloud-secret-manager" },
-    { name = "google-cloud-storage" },
-    { name = "google-cloud-tasks" },
-    { name = "httpx" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "croniter", specifier = ">=1.3" },
-    { name = "duckdb", specifier = ">=1.5.2" },
-    { name = "fastapi", specifier = ">=0.115" },
-    { name = "google-cloud-pubsub", specifier = ">=2.21" },
-    { name = "grpcio", specifier = ">=1.60" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "jinja2", specifier = ">=3.1" },
-    { name = "pydantic", specifier = ">=2.7" },
-    { name = "python-multipart", specifier = ">=0.0.9" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "genbadge", extras = ["coverage"], specifier = ">=1.1" },
-    { name = "google-cloud-bigquery", specifier = ">=3.41.0" },
-    { name = "google-cloud-firestore", specifier = ">=2.16" },
-    { name = "google-cloud-scheduler", specifier = ">=2.19.0" },
-    { name = "google-cloud-secret-manager", specifier = ">=2.20" },
-    { name = "google-cloud-storage", specifier = ">=2.16" },
-    { name = "google-cloud-tasks", specifier = ">=2.16" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "pytest-asyncio", specifier = ">=0.23" },
-    { name = "pytest-cov", specifier = ">=5" },
 ]
 
 [[package]]

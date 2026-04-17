@@ -1,8 +1,8 @@
-# LocalGCP — Claude Code Guide
+# Cloudbox — Claude Code Guide
 
 ## Project overview
 
-LocalGCP is a local emulator for GCP services (Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, Cloud Scheduler). It is written in Python using FastAPI and runs every service as a separate uvicorn server, all started concurrently from a single entry point.
+Cloudbox is a local emulator for GCP services (Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, Cloud Scheduler). It is written in Python using FastAPI and runs every service as a separate uvicorn server, all started concurrently from a single entry point.
 
 **Stack:** Python 3.12+, FastAPI, uvicorn, Pydantic v2, grpcio, DuckDB, croniter, uv (package manager)
 
@@ -10,7 +10,7 @@ LocalGCP is a local emulator for GCP services (Cloud Storage, Pub/Sub, Firestore
 
 ```bash
 uv sync           # install all deps (including dev)
-uv run localgcp   # start all services
+uv run cloudbox   # start all services
 ```
 
 Or via Docker:
@@ -30,7 +30,7 @@ All 406 tests should pass. Tests use `pytest-asyncio` with `asyncio_mode = "auto
 ## Project layout
 
 ```
-localgcp/
+cloudbox/
   main.py                   Entry point — spawns all service servers concurrently
   config.py                 Settings dataclass, reads env vars
   gcloudlocal.py            gcloud-compatible CLI (installed as 'gcloudlocal' entry point)
@@ -68,7 +68,7 @@ sdk_compat/
   clients.py                Pre-configured GCP SDK client factories
   test_with_sdk.py          Live smoke tests (requires a running instance)
 bin/
-  gcloudlocal.py            Thin shim → localgcp.gcloudlocal:main
+  gcloudlocal.py            Thin shim → cloudbox.gcloudlocal:main
   *.sh                      Shell helper scripts
 ```
 
@@ -77,7 +77,7 @@ bin/
 Every service (except BigQuery) follows the same three-file layout:
 
 ```
-localgcp/services/<name>/
+cloudbox/services/<name>/
     app.py      FastAPI application with all routes
     models.py   Pydantic v2 request/response models
     store.py    Thin wrapper around NamespacedStore
@@ -87,20 +87,20 @@ BigQuery and Cloud Spanner use an `engine.py` module wrapping DuckDB instead of 
 
 When adding a new service:
 1. Create the directory and three files above.
-2. Register the service in `localgcp/main.py` by adding it to `_SERVICES` and `apps` in `_build_configs()`.
-3. Add a port setting to `localgcp/config.py` and `docker-compose.yml`.
+2. Register the service in `cloudbox/main.py` by adding it to `_SERVICES` and `apps` in `_build_configs()`.
+3. Add a port setting to `cloudbox/config.py` and `docker-compose.yml`.
 4. Add a test file under `tests/`.
-5. Add an admin UI tab in `localgcp/admin/app.py` (stats, panel HTML, JS loader, API endpoints, reset wiring).
+5. Add an admin UI tab in `cloudbox/admin/app.py` (stats, panel HTML, JS loader, API endpoints, reset wiring).
 
 ## Key environment variables
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LOCALGCP_PROJECT` | `local-project` | Default project ID |
-| `LOCALGCP_LOCATION` | `us-central1` | Default region |
-| `LOCALGCP_DATA_DIR` | *(unset)* | Enables file-backed persistence |
-| `LOCALGCP_LOG_LEVEL` | `info` | Log verbosity |
-| Port variables (`LOCALGCP_*_PORT`) | see config.py | Per-service port overrides |
+| `CLOUDBOX_PROJECT` | `local-project` | Default project ID |
+| `CLOUDBOX_LOCATION` | `us-central1` | Default region |
+| `CLOUDBOX_DATA_DIR` | *(unset)* | Enables file-backed persistence |
+| `CLOUDBOX_LOG_LEVEL` | `info` | Log verbosity |
+| Port variables (`CLOUDBOX_*_PORT`) | see config.py | Per-service port overrides |
 
 ## Pub/Sub transport notes
 
@@ -122,12 +122,12 @@ DML result detection: after INSERT/UPDATE/DELETE, DuckDB returns a single-column
 
 ## Cloud Scheduler notes
 
-The background worker (`localgcp/services/scheduler/worker.py`) polls every 30 seconds. `_is_due()` uses `croniter` to check whether the next cron occurrence after `lastAttemptTime` is ≤ now. Jobs that have never run are always due on the first poll.
+The background worker (`cloudbox/services/scheduler/worker.py`) polls every 30 seconds. `_is_due()` uses `croniter` to check whether the next cron occurrence after `lastAttemptTime` is ≤ now. Jobs that have never run are always due on the first poll.
 
-When testing scheduler routes that call `_dispatch`, patch `localgcp.services.scheduler.worker._dispatch` (not `app.httpx`) because httpx is imported locally inside `run_job` in `app.py`:
+When testing scheduler routes that call `_dispatch`, patch `cloudbox.services.scheduler.worker._dispatch` (not `app.httpx`) because httpx is imported locally inside `run_job` in `app.py`:
 
 ```python
-with patch("localgcp.services.scheduler.worker._dispatch", new_callable=AsyncMock):
+with patch("cloudbox.services.scheduler.worker._dispatch", new_callable=AsyncMock):
     r = scheduler_client.post(f"{BASE}/my-job:run")
 ```
 
@@ -135,12 +135,12 @@ with patch("localgcp.services.scheduler.worker._dispatch", new_callable=AsyncMoc
 
 Three CLI entry points are installed after `uv sync`:
 
-- `localgcp` → `localgcp.main:main` — starts all emulator services
-- `gcloudlocal` → `localgcp.gcloudlocal:main` — gcloud-compatible CLI
-- `gsutillocal` → `localgcp.gsutillocal:main` — gsutil-compatible CLI for Cloud Storage
+- `cloudbox` → `cloudbox.main:main` — starts all emulator services
+- `gcloudlocal` → `cloudbox.gcloudlocal:main` — gcloud-compatible CLI
+- `gsutillocal` → `cloudbox.gsutillocal:main` — gsutil-compatible CLI for Cloud Storage
 
 Packaging is configured in `pyproject.toml` with `[tool.uv] package = true` and hatchling as the build backend.
 
 ## Persistence
 
-By default all state is in-memory and lost on restart. Set `LOCALGCP_DATA_DIR` to a directory path to enable JSON file persistence. The `NamespacedStore` in `localgcp/core/store.py` handles both modes transparently. Writes are atomic (write to `.tmp`, then `Path.replace()`).
+By default all state is in-memory and lost on restart. Set `CLOUDBOX_DATA_DIR` to a directory path to enable JSON file persistence. The `NamespacedStore` in `cloudbox/core/store.py` handles both modes transparently. Writes are atomic (write to `.tmp`, then `Path.replace()`).

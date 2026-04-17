@@ -1,8 +1,8 @@
-"""Pre-configured GCP SDK client factories pointing at LocalGCP.
+"""Pre-configured GCP SDK client factories pointing at Cloudbox.
 
 Transport notes
 ---------------
-LocalGCP runs two Pub/Sub endpoints:
+Cloudbox runs two Pub/Sub endpoints:
 
   Port 8085 — gRPC (HTTP/2) — the standard emulator port.
               Set PUBSUB_EMULATOR_HOST=localhost:8085 before importing the
@@ -27,21 +27,21 @@ from __future__ import annotations
 
 import os
 
-_HOST = os.environ.get("LOCALGCP_HOST", "localhost")
-_GCS_PORT = int(os.environ.get("LOCALGCP_GCS_PORT", "4443"))
+_HOST = os.environ.get("CLOUDBOX_HOST", "localhost")
+_GCS_PORT = int(os.environ.get("CLOUDBOX_GCS_PORT", "4443"))
 # Pub/Sub has two ports:
-#   LOCALGCP_PUBSUB_PORT     (8085) — gRPC, set PUBSUB_EMULATOR_HOST=localhost:8085
-#   LOCALGCP_PUBSUB_REST_PORT (8086) — HTTP/1.1 REST, used by the helpers below
-_PUBSUB_PORT = int(os.environ.get("LOCALGCP_PUBSUB_PORT", "8085"))
-_PUBSUB_REST_PORT = int(os.environ.get("LOCALGCP_PUBSUB_REST_PORT", "8086"))
-_FIRESTORE_PORT = int(os.environ.get("LOCALGCP_FIRESTORE_PORT", "8080"))
-_SM_PORT = int(os.environ.get("LOCALGCP_SECRETMANAGER_PORT", "8090"))
-_TASKS_PORT = int(os.environ.get("LOCALGCP_TASKS_PORT", "8123"))
-_PROJECT = os.environ.get("LOCALGCP_PROJECT", "local-project")
+#   CLOUDBOX_PUBSUB_PORT     (8085) — gRPC, set PUBSUB_EMULATOR_HOST=localhost:8085
+#   CLOUDBOX_PUBSUB_REST_PORT (8086) — HTTP/1.1 REST, used by the helpers below
+_PUBSUB_PORT = int(os.environ.get("CLOUDBOX_PUBSUB_PORT", "8085"))
+_PUBSUB_REST_PORT = int(os.environ.get("CLOUDBOX_PUBSUB_REST_PORT", "8086"))
+_FIRESTORE_PORT = int(os.environ.get("CLOUDBOX_FIRESTORE_PORT", "8080"))
+_SM_PORT = int(os.environ.get("CLOUDBOX_SECRETMANAGER_PORT", "8090"))
+_TASKS_PORT = int(os.environ.get("CLOUDBOX_TASKS_PORT", "8123"))
+_PROJECT = os.environ.get("CLOUDBOX_PROJECT", "local-project")
 
 
 def storage_client():
-    """Return a google-cloud-storage Client pointed at LocalGCP.
+    """Return a google-cloud-storage Client pointed at Cloudbox.
 
     GCS SDK uses REST by default — no transport override needed.
     """
@@ -56,7 +56,7 @@ def storage_client():
 
 
 def pubsub_publisher(*, transport: str = "grpc"):
-    """Return a Pub/Sub PublisherClient pointed at LocalGCP.
+    """Return a Pub/Sub PublisherClient pointed at Cloudbox.
 
     By default uses gRPC transport (port 8085), compatible with
     PUBSUB_EMULATOR_HOST.  Pass transport="rest" to use the HTTP/1.1
@@ -81,7 +81,7 @@ def pubsub_publisher(*, transport: str = "grpc"):
 
 
 def pubsub_subscriber(*, transport: str = "grpc"):
-    """Return a Pub/Sub SubscriberClient pointed at LocalGCP.
+    """Return a Pub/Sub SubscriberClient pointed at Cloudbox.
 
     By default uses gRPC transport (port 8085), compatible with
     PUBSUB_EMULATOR_HOST.  Pass transport="rest" to use the HTTP/1.1
@@ -105,10 +105,10 @@ def pubsub_subscriber(*, transport: str = "grpc"):
 
 
 def firestore_client():
-    """Return a Firestore Client pointed at LocalGCP (REST transport).
+    """Return a Firestore Client pointed at Cloudbox (REST transport).
 
     The Firestore SDK defaults to gRPC. We force REST so it talks HTTP/1.1
-    to LocalGCP's port.
+    to Cloudbox's port.
     """
     from google.cloud import firestore
     from google.auth.credentials import AnonymousCredentials
@@ -126,7 +126,7 @@ def firestore_client():
 
 
 def secret_manager_client():
-    """Return a SecretManagerServiceClient pointed at LocalGCP.
+    """Return a SecretManagerServiceClient pointed at Cloudbox.
 
     Secret Manager SDK uses REST by default — no transport override needed.
     """
@@ -141,7 +141,7 @@ def secret_manager_client():
 
 
 def tasks_client():
-    """Return a CloudTasksClient pointed at LocalGCP.
+    """Return a CloudTasksClient pointed at Cloudbox.
 
     Cloud Tasks SDK uses REST by default — no transport override needed.
     """
@@ -155,12 +155,12 @@ def tasks_client():
     )
 
 
-_BQ_PORT = int(os.environ.get("LOCALGCP_BIGQUERY_PORT", "9050"))
-_SCHEDULER_PORT = int(os.environ.get("LOCALGCP_SCHEDULER_PORT", "8091"))
+_BQ_PORT = int(os.environ.get("CLOUDBOX_BIGQUERY_PORT", "9050"))
+_SCHEDULER_PORT = int(os.environ.get("CLOUDBOX_SCHEDULER_PORT", "8091"))
 
 
 def bigquery_client():
-    """Return a BigQuery Client pointed at LocalGCP.
+    """Return a BigQuery Client pointed at Cloudbox.
 
     Uses AnonymousCredentials so no real GCP auth is required.
     """
@@ -178,7 +178,7 @@ def bigquery_client():
 
 
 def scheduler_client():
-    """Return a CloudSchedulerClient pointed at LocalGCP."""
+    """Return a CloudSchedulerClient pointed at Cloudbox."""
     from google.cloud import scheduler_v1
     from google.api_core import client_options as options
 

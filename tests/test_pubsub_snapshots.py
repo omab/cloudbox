@@ -42,7 +42,7 @@ def _ack(client, ack_ids: list[str]):
 
 def test_publish_logs_to_topic(pubsub_client):
     """Messages published via REST are stored in the topic log."""
-    from localgcp.services.pubsub.store import _topic_log
+    from cloudbox.services.pubsub.store import _topic_log
     _setup(pubsub_client)
     _publish(pubsub_client, ["hello", "world"])
     assert len(_topic_log.get(TOPIC, [])) == 2
@@ -50,7 +50,7 @@ def test_publish_logs_to_topic(pubsub_client):
 
 def test_topic_log_survives_subscription_ack(pubsub_client):
     """Acking a message from a subscription does not remove it from the topic log."""
-    from localgcp.services.pubsub.store import _topic_log
+    from cloudbox.services.pubsub.store import _topic_log
     _setup(pubsub_client)
     _publish(pubsub_client, ["persistent"])
     pulled = _pull_all(pubsub_client)
@@ -252,9 +252,9 @@ def test_seek_to_snapshot_empty_queue_captures_now(pubsub_client):
 async def test_grpc_seek_to_time(reset_stores):
     """_seek handler replays messages from a timestamp."""
     from datetime import datetime, timezone, timedelta
-    from localgcp.services.pubsub.grpc_server import _seek
-    from localgcp.services.pubsub import store as ps_store
-    from localgcp.services.pubsub.store import get_store
+    from cloudbox.services.pubsub.grpc_server import _seek
+    from cloudbox.services.pubsub import store as ps_store
+    from cloudbox.services.pubsub.store import get_store
     from google.pubsub_v1.types import pubsub as t
     import grpc
 
@@ -292,9 +292,9 @@ async def test_grpc_seek_to_time(reset_stores):
 
 async def test_grpc_create_snapshot(reset_stores):
     """_create_snapshot stores a snapshot and returns it."""
-    from localgcp.services.pubsub.grpc_server import _create_snapshot
-    from localgcp.services.pubsub import store as ps_store
-    from localgcp.services.pubsub.store import get_store
+    from cloudbox.services.pubsub.grpc_server import _create_snapshot
+    from cloudbox.services.pubsub import store as ps_store
+    from cloudbox.services.pubsub.store import get_store
     from google.pubsub_v1.types import pubsub as t
 
     store = get_store()

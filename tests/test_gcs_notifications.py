@@ -5,8 +5,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from localgcp.services.gcs.app import app as gcs_app
-from localgcp.services.pubsub.app import app as pubsub_app
+from cloudbox.services.gcs.app import app as gcs_app
+from cloudbox.services.pubsub.app import app as pubsub_app
 
 GCS = TestClient(gcs_app)
 PS = TestClient(pubsub_app)

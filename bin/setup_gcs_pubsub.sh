@@ -28,11 +28,11 @@ Optional:
 EOF
 }
 
-PROJECT="${LOCALGCP_PROJECT:-}"
+PROJECT="${CLOUDBOX_PROJECT:-}"
 BUCKET=""
 TOPIC=""
 SUBSCRIPTION=""
-REGION="${LOCALGCP_LOCATION:-us-central1}"
+REGION="${CLOUDBOX_LOCATION:-us-central1}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in

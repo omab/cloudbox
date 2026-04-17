@@ -1,4 +1,4 @@
-"""Unit tests for localgcp core utilities."""
+"""Unit tests for cloudbox core utilities."""
 import json
 import math
 import threading
@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 
 def test_store_basic_operations():
-    from localgcp.core.store import NamespacedStore
+    from cloudbox.core.store import NamespacedStore
 
     s = NamespacedStore("test")
     assert s.get("ns", "k") is None
@@ -29,7 +29,7 @@ def test_store_basic_operations():
 
 
 def test_store_list_and_keys():
-    from localgcp.core.store import NamespacedStore
+    from cloudbox.core.store import NamespacedStore
 
     s = NamespacedStore("test")
     s.set("ns", "a", {"x": 1})
@@ -39,7 +39,7 @@ def test_store_list_and_keys():
 
 
 def test_store_clear_namespace():
-    from localgcp.core.store import NamespacedStore
+    from cloudbox.core.store import NamespacedStore
 
     s = NamespacedStore("test")
     s.set("ns1", "k", {"v": 1})
@@ -50,7 +50,7 @@ def test_store_clear_namespace():
 
 
 def test_store_reset():
-    from localgcp.core.store import NamespacedStore
+    from cloudbox.core.store import NamespacedStore
 
     s = NamespacedStore("test")
     s.set("ns1", "k1", {"v": 1})
@@ -61,7 +61,7 @@ def test_store_reset():
 
 
 def test_store_stats():
-    from localgcp.core.store import NamespacedStore
+    from cloudbox.core.store import NamespacedStore
 
     s = NamespacedStore("test")
     s.set("buckets", "b1", {})
@@ -72,14 +72,14 @@ def test_store_stats():
 
 
 def test_store_delete_missing_returns_false():
-    from localgcp.core.store import NamespacedStore
+    from cloudbox.core.store import NamespacedStore
 
     s = NamespacedStore("test")
     assert s.delete("ns", "nonexistent") is False
 
 
 def test_store_persistence_writes_and_loads(tmp_path):
-    from localgcp.core.store import NamespacedStore
+    from cloudbox.core.store import NamespacedStore
 
     s = NamespacedStore("svc", data_dir=str(tmp_path))
     s.set("ns", "key1", {"val": 42})
@@ -98,7 +98,7 @@ def test_store_persistence_writes_and_loads(tmp_path):
 
 
 def test_store_persistence_clear_namespace(tmp_path):
-    from localgcp.core.store import NamespacedStore
+    from cloudbox.core.store import NamespacedStore
 
     s = NamespacedStore("svc", data_dir=str(tmp_path))
     s.set("ns", "k", {"v": 1})
@@ -110,7 +110,7 @@ def test_store_persistence_clear_namespace(tmp_path):
 
 
 def test_store_persistence_reset(tmp_path):
-    from localgcp.core.store import NamespacedStore
+    from cloudbox.core.store import NamespacedStore
 
     s = NamespacedStore("svc", data_dir=str(tmp_path))
     s.set("ns", "k", {"v": 1})
@@ -122,7 +122,7 @@ def test_store_persistence_reset(tmp_path):
 
 
 def test_store_load_missing_file_is_noop(tmp_path):
-    from localgcp.core.store import NamespacedStore
+    from cloudbox.core.store import NamespacedStore
 
     # data_dir exists but no data.json — should start empty
     s = NamespacedStore("svc", data_dir=str(tmp_path))
@@ -130,7 +130,7 @@ def test_store_load_missing_file_is_noop(tmp_path):
 
 
 def test_store_thread_safety():
-    from localgcp.core.store import NamespacedStore
+    from cloudbox.core.store import NamespacedStore
 
     s = NamespacedStore("test")
     errors = []
@@ -157,7 +157,7 @@ def test_store_thread_safety():
 
 
 def test_gcp_error_known_status():
-    from localgcp.core.errors import gcp_error
+    from cloudbox.core.errors import gcp_error
 
     resp = gcp_error(404, "not found")
     assert resp.status_code == 404
@@ -168,7 +168,7 @@ def test_gcp_error_known_status():
 
 
 def test_gcp_error_unknown_status_falls_back():
-    from localgcp.core.errors import gcp_error
+    from cloudbox.core.errors import gcp_error
 
     resp = gcp_error(418, "teapot")
     body = json.loads(resp.body)
@@ -176,7 +176,7 @@ def test_gcp_error_unknown_status_falls_back():
 
 
 def test_gcp_error_explicit_status_override():
-    from localgcp.core.errors import gcp_error
+    from cloudbox.core.errors import gcp_error
 
     resp = gcp_error(400, "bad request", status="MY_STATUS")
     body = json.loads(resp.body)
@@ -185,7 +185,7 @@ def test_gcp_error_explicit_status_override():
 
 def test_gcp_error_handler_registered():
     """GCPError raised in a route returns a GCP-format JSON response."""
-    from localgcp.core.errors import GCPError, add_gcp_exception_handler
+    from cloudbox.core.errors import GCPError, add_gcp_exception_handler
 
     app = FastAPI()
     add_gcp_exception_handler(app)
@@ -204,7 +204,7 @@ def test_gcp_error_handler_registered():
 
 def test_generic_exception_handler_registered():
     """Unhandled Exception raised in a route returns 500 GCP-format JSON."""
-    from localgcp.core.errors import add_gcp_exception_handler
+    from cloudbox.core.errors import add_gcp_exception_handler
 
     app = FastAPI()
     add_gcp_exception_handler(app)
@@ -229,7 +229,7 @@ def test_generic_exception_handler_registered():
 
 def test_get_project_uses_path_param():
     from fastapi import Depends
-    from localgcp.core.auth import get_project
+    from cloudbox.core.auth import get_project
 
     app = FastAPI()
 
@@ -244,8 +244,8 @@ def test_get_project_uses_path_param():
 
 def test_get_project_falls_back_to_default():
     from fastapi import Depends
-    from localgcp.core.auth import get_project
-    from localgcp.config import settings
+    from cloudbox.core.auth import get_project
+    from cloudbox.config import settings
 
     app = FastAPI()
 
@@ -264,7 +264,7 @@ def test_get_project_falls_back_to_default():
 
 
 def test_middleware_logs_normal_request():
-    from localgcp.core.middleware import add_request_logging
+    from cloudbox.core.middleware import add_request_logging
 
     app = FastAPI()
     add_request_logging(app, "test-svc")
@@ -280,7 +280,7 @@ def test_middleware_logs_normal_request():
 
 def test_middleware_exception_reraises():
     """The middleware catches exceptions, logs them, and re-raises."""
-    from localgcp.core.middleware import add_request_logging
+    from cloudbox.core.middleware import add_request_logging
 
     app = FastAPI()
     add_request_logging(app, "test-svc")
@@ -296,7 +296,7 @@ def test_middleware_exception_reraises():
 
 
 def test_middleware_warning_level_for_4xx():
-    from localgcp.core.middleware import add_request_logging
+    from cloudbox.core.middleware import add_request_logging
 
     app = FastAPI()
     add_request_logging(app, "test-svc")

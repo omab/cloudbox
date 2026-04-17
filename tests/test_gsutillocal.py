@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from localgcp.services.gcs.app import app as gcs_app
+from cloudbox.services.gcs.app import app as gcs_app
 
 # ---------------------------------------------------------------------------
 # Adapter: makes TestClient look like an httpx.Client context manager so the
@@ -50,7 +50,7 @@ def gcs_adapter():
 @pytest.fixture(autouse=True)
 def patch_client(gcs_adapter):
     """Replace gsutillocal._client() with our TestClient adapter."""
-    with patch("localgcp.gsutillocal._client", return_value=gcs_adapter):
+    with patch("cloudbox.gsutillocal._client", return_value=gcs_adapter):
         yield
 
 
@@ -86,7 +86,7 @@ def _upload(adapter, bucket: str, name: str, body: bytes = b"hello") -> None:
 
 
 def test_ls_no_args_lists_buckets(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_ls
+    from cloudbox.gsutillocal import cmd_ls
 
     _make_bucket(gcs_adapter, "alpha")
     _make_bucket(gcs_adapter, "beta")
@@ -99,7 +99,7 @@ def test_ls_no_args_lists_buckets(gcs_adapter, capsys):
 
 
 def test_ls_bucket_lists_objects(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_ls
+    from cloudbox.gsutillocal import cmd_ls
 
     _make_bucket(gcs_adapter, "my-bucket")
     _upload(gcs_adapter, "my-bucket", "file.txt")
@@ -111,7 +111,7 @@ def test_ls_bucket_lists_objects(gcs_adapter, capsys):
 
 
 def test_ls_long_shows_size(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_ls
+    from cloudbox.gsutillocal import cmd_ls
 
     _make_bucket(gcs_adapter, "my-bucket")
     _upload(gcs_adapter, "my-bucket", "data.bin", body=b"x" * 512)
@@ -129,7 +129,7 @@ def test_ls_long_shows_size(gcs_adapter, capsys):
 
 
 def test_mb_creates_bucket(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_mb
+    from cloudbox.gsutillocal import cmd_mb
 
     cmd_mb(_args(bucket="gs://new-bucket", location=""))
 
@@ -142,7 +142,7 @@ def test_mb_creates_bucket(gcs_adapter, capsys):
 
 
 def test_mb_with_location(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_mb
+    from cloudbox.gsutillocal import cmd_mb
 
     cmd_mb(_args(bucket="gs://regional-bucket", location="us-east1"))
     capsys.readouterr()
@@ -152,7 +152,7 @@ def test_mb_with_location(gcs_adapter, capsys):
 
 
 def test_rb_removes_bucket(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_rb
+    from cloudbox.gsutillocal import cmd_rb
 
     _make_bucket(gcs_adapter, "to-delete")
     cmd_rb(_args(bucket="gs://to-delete"))
@@ -170,7 +170,7 @@ def test_rb_removes_bucket(gcs_adapter, capsys):
 
 
 def test_cp_upload(gcs_adapter, tmp_path, capsys):
-    from localgcp.gsutillocal import cmd_cp
+    from cloudbox.gsutillocal import cmd_cp
 
     _make_bucket(gcs_adapter, "uploads")
     src = tmp_path / "hello.txt"
@@ -186,7 +186,7 @@ def test_cp_upload(gcs_adapter, tmp_path, capsys):
 
 
 def test_cp_download(gcs_adapter, tmp_path, capsys):
-    from localgcp.gsutillocal import cmd_cp
+    from cloudbox.gsutillocal import cmd_cp
 
     _make_bucket(gcs_adapter, "dl-bucket")
     _upload(gcs_adapter, "dl-bucket", "notes.txt", body=b"downloaded")
@@ -199,7 +199,7 @@ def test_cp_download(gcs_adapter, tmp_path, capsys):
 
 
 def test_cp_gcs_to_gcs(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_cp
+    from cloudbox.gsutillocal import cmd_cp
 
     _make_bucket(gcs_adapter, "src-bucket")
     _make_bucket(gcs_adapter, "dst-bucket")
@@ -215,7 +215,7 @@ def test_cp_gcs_to_gcs(gcs_adapter, capsys):
 
 
 def test_cp_upload_recursive(gcs_adapter, tmp_path, capsys):
-    from localgcp.gsutillocal import cmd_cp
+    from cloudbox.gsutillocal import cmd_cp
 
     _make_bucket(gcs_adapter, "rcp-bucket")
     d = tmp_path / "mydir"
@@ -238,7 +238,7 @@ def test_cp_upload_recursive(gcs_adapter, tmp_path, capsys):
 
 
 def test_mv_renames_object(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_mv
+    from cloudbox.gsutillocal import cmd_mv
 
     _make_bucket(gcs_adapter, "mv-bucket")
     _upload(gcs_adapter, "mv-bucket", "old.txt", body=b"move me")
@@ -261,7 +261,7 @@ def test_mv_renames_object(gcs_adapter, capsys):
 
 
 def test_rm_single_object(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_rm
+    from cloudbox.gsutillocal import cmd_rm
 
     _make_bucket(gcs_adapter, "rm-bucket")
     _upload(gcs_adapter, "rm-bucket", "bye.txt")
@@ -275,7 +275,7 @@ def test_rm_single_object(gcs_adapter, capsys):
 
 
 def test_rm_wildcard(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_rm
+    from cloudbox.gsutillocal import cmd_rm
 
     _make_bucket(gcs_adapter, "wc-bucket")
     _upload(gcs_adapter, "wc-bucket", "logs/a.log")
@@ -291,7 +291,7 @@ def test_rm_wildcard(gcs_adapter, capsys):
 
 
 def test_rm_recursive_bucket(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_rm
+    from cloudbox.gsutillocal import cmd_rm
 
     _make_bucket(gcs_adapter, "nuke-me")
     _upload(gcs_adapter, "nuke-me", "x.txt")
@@ -310,7 +310,7 @@ def test_rm_recursive_bucket(gcs_adapter, capsys):
 
 
 def test_cat_writes_to_stdout(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_cat
+    from cloudbox.gsutillocal import cmd_cat
 
     _make_bucket(gcs_adapter, "cat-bucket")
     _upload(gcs_adapter, "cat-bucket", "greet.txt", body=b"hello cat")
@@ -329,7 +329,7 @@ def test_cat_writes_to_stdout(gcs_adapter, capsys):
 
 
 def test_stat_shows_metadata(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_stat
+    from cloudbox.gsutillocal import cmd_stat
 
     _make_bucket(gcs_adapter, "stat-bucket")
     _upload(gcs_adapter, "stat-bucket", "meta.txt", body=b"data")
@@ -348,7 +348,7 @@ def test_stat_shows_metadata(gcs_adapter, capsys):
 
 
 def test_du_shows_size(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_du
+    from cloudbox.gsutillocal import cmd_du
 
     _make_bucket(gcs_adapter, "du-bucket")
     _upload(gcs_adapter, "du-bucket", "big.bin", body=b"x" * 1000)
@@ -361,7 +361,7 @@ def test_du_shows_size(gcs_adapter, capsys):
 
 
 def test_du_no_args_all_buckets(gcs_adapter, capsys):
-    from localgcp.gsutillocal import cmd_du
+    from cloudbox.gsutillocal import cmd_du
 
     _make_bucket(gcs_adapter, "alpha")
     _make_bucket(gcs_adapter, "beta")

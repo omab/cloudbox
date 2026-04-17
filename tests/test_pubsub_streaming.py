@@ -18,7 +18,7 @@ SUB = f"projects/{PROJECT}/subscriptions/stream-sub"
 @pytest.fixture
 async def grpc_port(reset_stores):
     """Start a live gRPC server, yield its port, shut it down after the test."""
-    from localgcp.services.pubsub.grpc_server import create_server
+    from cloudbox.services.pubsub.grpc_server import create_server
 
     server = await create_server("127.0.0.1", 0)
     await server.start()
@@ -77,9 +77,9 @@ async def _setup_topic_and_sub(channel):
 
 async def test_streaming_pull_delivers_messages(reset_stores):
     """_streaming_pull sends queued messages to the client."""
-    from localgcp.services.pubsub.grpc_server import _streaming_pull
-    from localgcp.services.pubsub import store as ps_store
-    from localgcp.services.pubsub.store import get_store
+    from cloudbox.services.pubsub.grpc_server import _streaming_pull
+    from cloudbox.services.pubsub import store as ps_store
+    from cloudbox.services.pubsub.store import get_store
 
     store = get_store()
     store.set("subscriptions", SUB, {
@@ -143,9 +143,9 @@ async def test_streaming_pull_delivers_messages(reset_stores):
 
 async def test_streaming_pull_acks_remove_messages(reset_stores):
     """Ack IDs sent back via subsequent requests are properly acknowledged."""
-    from localgcp.services.pubsub.grpc_server import _streaming_pull
-    from localgcp.services.pubsub import store as ps_store
-    from localgcp.services.pubsub.store import get_store
+    from cloudbox.services.pubsub.grpc_server import _streaming_pull
+    from cloudbox.services.pubsub import store as ps_store
+    from cloudbox.services.pubsub.store import get_store
 
     store = get_store()
     store.set("subscriptions", SUB, {
@@ -211,7 +211,7 @@ async def test_streaming_pull_acks_remove_messages(reset_stores):
 
 async def test_streaming_pull_unknown_subscription(reset_stores):
     """Streaming pull on an unknown subscription aborts with NOT_FOUND."""
-    from localgcp.services.pubsub.grpc_server import _streaming_pull
+    from cloudbox.services.pubsub.grpc_server import _streaming_pull
     from google.pubsub_v1.types import pubsub as t
 
     aborted = {}
@@ -240,9 +240,9 @@ async def test_streaming_pull_unknown_subscription(reset_stores):
 
 async def test_streaming_pull_empty_queue_polls(reset_stores):
     """Streaming pull with no messages stays open and polls without crashing."""
-    from localgcp.services.pubsub.grpc_server import _streaming_pull
-    from localgcp.services.pubsub import store as ps_store
-    from localgcp.services.pubsub.store import get_store
+    from cloudbox.services.pubsub.grpc_server import _streaming_pull
+    from cloudbox.services.pubsub import store as ps_store
+    from cloudbox.services.pubsub.store import get_store
     from google.pubsub_v1.types import pubsub as t
 
     store = get_store()
@@ -284,9 +284,9 @@ async def test_streaming_pull_empty_queue_polls(reset_stores):
 
 async def test_streaming_pull_delivers_multiple_messages(reset_stores):
     """All queued messages are delivered before waiting for more."""
-    from localgcp.services.pubsub.grpc_server import _streaming_pull
-    from localgcp.services.pubsub import store as ps_store
-    from localgcp.services.pubsub.store import get_store
+    from cloudbox.services.pubsub.grpc_server import _streaming_pull
+    from cloudbox.services.pubsub import store as ps_store
+    from cloudbox.services.pubsub.store import get_store
     from google.pubsub_v1.types import pubsub as t
 
     store = get_store()

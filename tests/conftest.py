@@ -2,29 +2,29 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from localgcp.services.gcs.app import app as gcs_app
-from localgcp.services.pubsub.app import app as pubsub_app
-from localgcp.services.firestore.app import app as firestore_app
-from localgcp.services.secretmanager.app import app as secretmanager_app
-from localgcp.services.tasks.app import app as tasks_app
-from localgcp.services.bigquery.app import app as bigquery_app
-from localgcp.services.spanner.app import app as spanner_app
-from localgcp.services.logging.app import app as logging_app
-from localgcp.services.scheduler.app import app as scheduler_app
+from cloudbox.services.gcs.app import app as gcs_app
+from cloudbox.services.pubsub.app import app as pubsub_app
+from cloudbox.services.firestore.app import app as firestore_app
+from cloudbox.services.secretmanager.app import app as secretmanager_app
+from cloudbox.services.tasks.app import app as tasks_app
+from cloudbox.services.bigquery.app import app as bigquery_app
+from cloudbox.services.spanner.app import app as spanner_app
+from cloudbox.services.logging.app import app as logging_app
+from cloudbox.services.scheduler.app import app as scheduler_app
 
 
 @pytest.fixture(autouse=True)
 def reset_stores():
     """Reset all in-memory stores before each test."""
-    from localgcp.services.gcs.store import get_store as gcs_store
-    from localgcp.services.pubsub.store import get_store as pubsub_store, _queues, _unacked, _inflight_keys, _topic_log
-    from localgcp.services.firestore.store import get_store as fs_store
-    from localgcp.services.secretmanager.store import get_store as sm_store
-    from localgcp.services.tasks.store import get_store as tasks_store
-    from localgcp.services.bigquery.engine import get_engine as bq_engine
-    from localgcp.services.spanner.engine import get_engine as spanner_engine
-    from localgcp.services.logging.store import get_store as logging_store
-    from localgcp.services.scheduler.store import get_store as scheduler_store
+    from cloudbox.services.gcs.store import get_store as gcs_store
+    from cloudbox.services.pubsub.store import get_store as pubsub_store, _queues, _unacked, _inflight_keys, _topic_log
+    from cloudbox.services.firestore.store import get_store as fs_store
+    from cloudbox.services.secretmanager.store import get_store as sm_store
+    from cloudbox.services.tasks.store import get_store as tasks_store
+    from cloudbox.services.bigquery.engine import get_engine as bq_engine
+    from cloudbox.services.spanner.engine import get_engine as spanner_engine
+    from cloudbox.services.logging.store import get_store as logging_store
+    from cloudbox.services.scheduler.store import get_store as scheduler_store
 
     gcs_store().reset()
     pubsub_store().reset()

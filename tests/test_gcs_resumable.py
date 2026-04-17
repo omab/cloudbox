@@ -263,7 +263,7 @@ def test_lifecycle_delete_old_objects(gcs_client):
     _upload(gcs_client, "test-bucket", "new.txt")
 
     # Manually back-date "old.txt" in the store
-    from localgcp.services.gcs.store import get_store
+    from cloudbox.services.gcs.store import get_store
     store = get_store()
     obj = store.get("objects", "test-bucket/old.txt")
     old_time = _rfc3339(datetime.now(timezone.utc) - timedelta(days=40))
@@ -288,7 +288,7 @@ def test_lifecycle_delete_by_created_before(gcs_client):
     _setup_bucket(gcs_client)
     _upload(gcs_client, "test-bucket", "ancient.txt")
 
-    from localgcp.services.gcs.store import get_store
+    from cloudbox.services.gcs.store import get_store
     store = get_store()
     obj = store.get("objects", "test-bucket/ancient.txt")
     obj["timeCreated"] = _rfc3339(datetime(2020, 1, 1, tzinfo=timezone.utc))
@@ -332,7 +332,7 @@ def test_lifecycle_set_storage_class(gcs_client):
     _setup_bucket(gcs_client)
     _upload(gcs_client, "test-bucket", "archive.bin")
 
-    from localgcp.services.gcs.store import get_store
+    from cloudbox.services.gcs.store import get_store
     store = get_store()
     obj = store.get("objects", "test-bucket/archive.bin")
     obj["timeCreated"] = _rfc3339(datetime.now(timezone.utc) - timedelta(days=400))
@@ -356,7 +356,7 @@ def test_lifecycle_set_storage_class_no_match(gcs_client):
     _setup_bucket(gcs_client)
     _upload(gcs_client, "test-bucket", "already-nearline.bin")
 
-    from localgcp.services.gcs.store import get_store
+    from cloudbox.services.gcs.store import get_store
     store = get_store()
     obj = store.get("objects", "test-bucket/already-nearline.bin")
     obj["storageClass"] = "NEARLINE"

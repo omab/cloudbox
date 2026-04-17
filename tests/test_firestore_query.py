@@ -69,7 +69,7 @@ def _query(where=None, order_by=None, offset=None, limit=None):
 # ---------------------------------------------------------------------------
 
 def test_extract_value_all_types():
-    from localgcp.services.firestore.query import _extract_value
+    from cloudbox.services.firestore.query import _extract_value
 
     assert _extract_value({"nullValue": None}) is None
     assert _extract_value({"booleanValue": True}) is True
@@ -87,7 +87,7 @@ def test_extract_value_all_types():
 # ---------------------------------------------------------------------------
 
 def test_not_equal_matches():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"x": 1}), _doc({"x": 2}), _doc({"x": 3})]
     result = run_query(docs, _query(where=_field_filter("x", "NOT_EQUAL", 2)))
@@ -95,7 +95,7 @@ def test_not_equal_matches():
 
 
 def test_not_equal_no_match():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"x": 5}), _doc({"x": 5})]
     result = run_query(docs, _query(where=_field_filter("x", "NOT_EQUAL", 5)))
@@ -103,7 +103,7 @@ def test_not_equal_no_match():
 
 
 def test_less_than():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"n": 1}), _doc({"n": 5}), _doc({"n": 10})]
     result = run_query(docs, _query(where=_field_filter("n", "LESS_THAN", 5)))
@@ -112,7 +112,7 @@ def test_less_than():
 
 
 def test_less_than_or_equal():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"n": 1}), _doc({"n": 5}), _doc({"n": 10})]
     result = run_query(docs, _query(where=_field_filter("n", "LESS_THAN_OR_EQUAL", 5)))
@@ -120,7 +120,7 @@ def test_less_than_or_equal():
 
 
 def test_greater_than():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"n": 1}), _doc({"n": 5}), _doc({"n": 10})]
     result = run_query(docs, _query(where=_field_filter("n", "GREATER_THAN", 5)))
@@ -128,7 +128,7 @@ def test_greater_than():
 
 
 def test_greater_than_or_equal():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"n": 1}), _doc({"n": 5}), _doc({"n": 10})]
     result = run_query(docs, _query(where=_field_filter("n", "GREATER_THAN_OR_EQUAL", 5)))
@@ -136,7 +136,7 @@ def test_greater_than_or_equal():
 
 
 def test_not_in():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"color": "red"}), _doc({"color": "blue"}), _doc({"color": "green"})]
     result = run_query(docs, _query(where=_field_filter("color", "NOT_IN", ["red", "blue"])))
@@ -145,7 +145,7 @@ def test_not_in():
 
 
 def test_not_in_non_list_value():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     # If filter value is not a list, everything matches NOT_IN
     docs = [_doc({"x": 1}), _doc({"x": 2})]
@@ -154,7 +154,7 @@ def test_not_in_non_list_value():
 
 
 def test_array_contains_any():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [
         _doc({"tags": ["a", "b"]}),
@@ -166,7 +166,7 @@ def test_array_contains_any():
 
 
 def test_array_contains_any_no_match():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"tags": ["x", "y"]})]
     result = run_query(docs, _query(where=_field_filter("tags", "ARRAY_CONTAINS_ANY", ["a", "b"])))
@@ -175,7 +175,7 @@ def test_array_contains_any_no_match():
 
 def test_type_error_returns_false():
     """Comparing incompatible types should return False (not crash)."""
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"x": "a string"})]
     result = run_query(docs, _query(where=_field_filter("x", "LESS_THAN", 5)))
@@ -187,7 +187,7 @@ def test_type_error_returns_false():
 # ---------------------------------------------------------------------------
 
 def test_is_null_matches():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"v": None}), _doc({"v": 1})]
     result = run_query(docs, _query(where=_unary_filter("v", "IS_NULL")))
@@ -195,7 +195,7 @@ def test_is_null_matches():
 
 
 def test_is_not_null_matches():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"v": None}), _doc({"v": 1}), _doc({"v": "hi"})]
     result = run_query(docs, _query(where=_unary_filter("v", "IS_NOT_NULL")))
@@ -203,7 +203,7 @@ def test_is_not_null_matches():
 
 
 def test_is_nan_matches():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"f": float("nan")}), _doc({"f": 1.0})]
     result = run_query(docs, _query(where=_unary_filter("f", "IS_NAN")))
@@ -211,7 +211,7 @@ def test_is_nan_matches():
 
 
 def test_is_nan_non_float_returns_false():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"f": "not-a-float"})]
     result = run_query(docs, _query(where=_unary_filter("f", "IS_NAN")))
@@ -219,7 +219,7 @@ def test_is_nan_non_float_returns_false():
 
 
 def test_is_not_nan_matches():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"f": float("nan")}), _doc({"f": 1.0}), _doc({"f": "x"})]
     result = run_query(docs, _query(where=_unary_filter("f", "IS_NOT_NAN")))
@@ -231,7 +231,7 @@ def test_is_not_nan_matches():
 # ---------------------------------------------------------------------------
 
 def test_order_by_descending():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"n": 1}), _doc({"n": 3}), _doc({"n": 2})]
     result = run_query(docs, _query(order_by=[{"field": {"fieldPath": "n"}, "direction": "DESCENDING"}]))
@@ -240,7 +240,7 @@ def test_order_by_descending():
 
 
 def test_order_by_multi_key():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [
         _doc({"g": 2, "n": 1}),
@@ -263,7 +263,7 @@ def test_order_by_multi_key():
 # ---------------------------------------------------------------------------
 
 def test_offset_skips_leading_docs():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"i": i}) for i in range(5)]
     result = run_query(docs, _query(offset=2))
@@ -272,7 +272,7 @@ def test_offset_skips_leading_docs():
 
 
 def test_offset_with_limit():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"i": i}) for i in range(10)]
     result = run_query(docs, _query(offset=3, limit=4))
@@ -281,7 +281,7 @@ def test_offset_with_limit():
 
 
 def test_offset_zero_is_noop():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"i": i}) for i in range(3)]
     result = run_query(docs, _query(offset=0))
@@ -293,7 +293,7 @@ def test_offset_zero_is_noop():
 # ---------------------------------------------------------------------------
 
 def test_get_field_nested_path():
-    from localgcp.services.firestore.query import _get_field
+    from cloudbox.services.firestore.query import _get_field
 
     fields = {
         "address": {
@@ -309,7 +309,7 @@ def test_get_field_nested_path():
 
 
 def test_get_field_missing_returns_none():
-    from localgcp.services.firestore.query import _get_field
+    from cloudbox.services.firestore.query import _get_field
 
     assert _get_field({}, "missing.path") is None
 
@@ -319,7 +319,7 @@ def test_get_field_missing_returns_none():
 # ---------------------------------------------------------------------------
 
 def test_composite_and_filter():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [
         _doc({"a": 1, "b": 1}),
@@ -339,7 +339,7 @@ def test_composite_and_filter():
 
 
 def test_composite_unknown_op_returns_true():
-    from localgcp.services.firestore.query import run_query
+    from cloudbox.services.firestore.query import run_query
 
     docs = [_doc({"x": 1}), _doc({"x": 2})]
     result = run_query(docs, _query(where={

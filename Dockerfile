@@ -13,7 +13,7 @@ RUN uv sync --no-dev --no-install-project --frozen
 
 # Copy application source and install the project
 COPY LICENSE README.md ./
-COPY localgcp/ localgcp/
+COPY cloudbox/ cloudbox/
 RUN uv sync --no-dev --frozen
 
 # Expose all service ports
@@ -23,4 +23,4 @@ EXPOSE 4443 8080 8085 8086 8090 8123 9050 9010 9020 8091 8888
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8888/health')" || exit 1
 
-CMD ["uv", "run", "localgcp"]
+CMD ["uv", "run", "cloudbox"]

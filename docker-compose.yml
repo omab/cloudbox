@@ -1,8 +1,8 @@
 services:
-  localgcp:
-    image: omab/localgcp:latest
+  cloudbox:
+    image: omab/cloudbox:latest
     build: .
-    container_name: localgcp
+    container_name: cloudbox
     ports:
       - "4443:4443"   # Cloud Storage
       - "8080:8080"   # Firestore
@@ -16,12 +16,12 @@ services:
       - "8091:8091"   # Cloud Scheduler
       - "8888:8888"   # Admin UI
     environment:
-      - LOCALGCP_PROJECT=local-project
-      - LOCALGCP_LOCATION=us-central1
-      - LOCALGCP_DATA_DIR=/data
+      - CLOUDBOX_PROJECT=local-project
+      - CLOUDBOX_LOCATION=us-central1
+      - CLOUDBOX_DATA_DIR=/data
     volumes:
-      - localgcp-data:/data
+      - cloudbox-data:/data
     restart: unless-stopped
 
 volumes:
-  localgcp-data:
+  cloudbox-data:
