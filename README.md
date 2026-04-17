@@ -391,7 +391,7 @@ Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
 | `runQuery` — `ORDER BY` (multi-field) | ✅ | `ASCENDING` / `DESCENDING` |
 | `runQuery` — `LIMIT` / `OFFSET` | ✅ | |
 | `runQuery` — collection group queries | ✅ | `allDescendants: true` |
-| `runQuery` — cursor pagination (`startAt` / `endBefore`) | ❌ | |
+| `runQuery` — cursor pagination (`startAt` / `endBefore`) | ✅ | All four variants: `startAt` (inclusive), `startAfter` (exclusive), `endBefore` (exclusive), `endAt` (inclusive); respects `orderBy` direction; composes with `limit` |
 | `runQuery` — field projection (`SELECT`) | ❌ | |
 | Batch write | ❌ | |
 | Field transforms (`increment`, `arrayUnion`, `arrayRemove`, `serverTimestamp`) | ✅ | `updateTransforms` in commit writes; dotted field paths supported |

@@ -108,6 +108,53 @@ def _eval_filter(doc: dict, filter_node: dict) -> bool:
     return True
 
 
+def _cursor_doc_value(doc: dict, order: dict) -> Any:
+    """Return the Python value used for cursor comparison for one orderBy clause."""
+    field_path = order["field"]["fieldPath"]
+    if field_path == "__name__":
+        return doc.get("name", "")
+    return _get_field(doc.get("fields", {}), field_path)
+
+
+def _compare_doc_to_cursor(doc: dict, order_by: list[dict], cursor_values: list) -> int:
+    """Return -1, 0, or 1 if doc sorts before, equal to, or after the cursor position.
+
+    Comparison respects each orderBy direction (ASCENDING / DESCENDING).
+    Stops at the shortest of order_by / cursor_values.
+    """
+    for i, order in enumerate(order_by):
+        if i >= len(cursor_values):
+            break
+        doc_val = _cursor_doc_value(doc, order)
+        raw_cv = cursor_values[i]
+        # cursor values arrive as Firestore Value dicts or plain Python values
+        if isinstance(raw_cv, dict):
+            if "referenceValue" in raw_cv:
+                cursor_val = raw_cv["referenceValue"]
+                # compare against doc name when sorting by __name__
+                if order["field"]["fieldPath"] == "__name__":
+                    doc_val = doc.get("name", "")
+            else:
+                cursor_val = _extract_value(raw_cv)
+        else:
+            cursor_val = raw_cv
+
+        if doc_val == cursor_val:
+            continue
+
+        try:
+            cmp = -1 if doc_val < cursor_val else 1
+        except TypeError:
+            cmp = -1 if doc_val is None else 1
+
+        if order.get("direction", "ASCENDING") == "DESCENDING":
+            cmp = -cmp
+
+        return cmp
+
+    return 0  # all compared fields equal → doc is AT the cursor position
+
+
 def run_query(docs: list[dict], query: dict) -> list[dict]:
     """Apply a structuredQuery dict to a list of document dicts."""
     results = list(docs)
@@ -120,26 +167,48 @@ def run_query(docs: list[dict], query: dict) -> list[dict]:
     # ORDER BY
     order_by = query.get("orderBy", [])
     if order_by:
-        def _sort_key(doc):
-            keys = []
-            for order in order_by:
-                field_path = order["field"]["fieldPath"]
-                keys.append(_get_field(doc.get("fields", {}), field_path))
-            return keys
-
-        reverse_flags = [o.get("direction", "ASCENDING") == "DESCENDING" for o in order_by]
         # Multi-key sort: Python's sort is stable so we sort by each key in reverse priority
         for i in reversed(range(len(order_by))):
             field_path = order_by[i]["field"]["fieldPath"]
             desc = order_by[i].get("direction", "ASCENDING") == "DESCENDING"
-            try:
-                results.sort(
-                    key=lambda d: (_get_field(d.get("fields", {}), field_path) is None,
-                                   _get_field(d.get("fields", {}), field_path)),
-                    reverse=desc,
+            if field_path == "__name__":
+                key_fn = lambda d, _d=desc: (d.get("name", "") is None, d.get("name", ""))
+            else:
+                key_fn = lambda d, fp=field_path: (
+                    _get_field(d.get("fields", {}), fp) is None,
+                    _get_field(d.get("fields", {}), fp),
                 )
+            try:
+                results.sort(key=key_fn, reverse=desc)
             except TypeError:
                 pass
+
+    # CURSORS — applied after sorting, before offset/limit
+    start_cursor = query.get("startAt")
+    if start_cursor and order_by:
+        cv = start_cursor.get("values", [])
+        before = start_cursor.get("before", True)
+        # before=True  → cursor is AT this position (inclusive start)
+        # before=False → cursor is AFTER this position (exclusive start / startAfter)
+        if cv:
+            results = [
+                d for d in results
+                if _compare_doc_to_cursor(d, order_by, cv) > 0
+                or (before and _compare_doc_to_cursor(d, order_by, cv) == 0)
+            ]
+
+    end_cursor = query.get("endAt")
+    if end_cursor and order_by:
+        cv = end_cursor.get("values", [])
+        before = end_cursor.get("before", False)
+        # before=True  → cursor is BEFORE this position (exclusive end / endBefore)
+        # before=False → cursor is AT this position (inclusive end)
+        if cv:
+            results = [
+                d for d in results
+                if _compare_doc_to_cursor(d, order_by, cv) < 0
+                or (not before and _compare_doc_to_cursor(d, order_by, cv) == 0)
+            ]
 
     # OFFSET
     offset = query.get("offset", 0)

@@ -765,6 +765,136 @@ def test_aggregation_empty_request_returns_empty(firestore_client):
     assert r.json() == []
 
 
+# ---------------------------------------------------------------------------
+# Cursor pagination
+# ---------------------------------------------------------------------------
+
+
+def _seed_cursor_col(firestore_client, collection, items):
+    """Insert {score, name} documents into a collection."""
+    for doc_id, score in items:
+        firestore_client.post(
+            f"/v1/{DOCS}/{collection}",
+            params={"documentId": doc_id},
+            json={"fields": {
+                "score": {"integerValue": str(score)},
+                "name": {"stringValue": doc_id},
+            }},
+        )
+
+
+def _scores(results):
+    return [int(d["document"]["fields"]["score"]["integerValue"]) for d in results]
+
+
+def test_start_at_inclusive(firestore_client):
+    """startAt with before=True: include the cursor document."""
+    _seed_cursor_col(firestore_client, "cur1", [("a", 10), ("b", 20), ("c", 30), ("d", 40)])
+    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
+        "structuredQuery": {
+            "from": [{"collectionId": "cur1"}],
+            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+            "startAt": {"values": [{"integerValue": "20"}], "before": True},
+        }
+    })
+    assert r.status_code == 200
+    assert _scores(r.json()) == [20, 30, 40]
+
+
+def test_start_after_exclusive(firestore_client):
+    """startAt with before=False: exclude the cursor document (startAfter)."""
+    _seed_cursor_col(firestore_client, "cur2", [("a", 10), ("b", 20), ("c", 30), ("d", 40)])
+    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
+        "structuredQuery": {
+            "from": [{"collectionId": "cur2"}],
+            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+            "startAt": {"values": [{"integerValue": "20"}], "before": False},
+        }
+    })
+    assert _scores(r.json()) == [30, 40]
+
+
+def test_end_before_exclusive(firestore_client):
+    """endAt with before=True: exclude the cursor document (endBefore)."""
+    _seed_cursor_col(firestore_client, "cur3", [("a", 10), ("b", 20), ("c", 30), ("d", 40)])
+    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
+        "structuredQuery": {
+            "from": [{"collectionId": "cur3"}],
+            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+            "endAt": {"values": [{"integerValue": "30"}], "before": True},
+        }
+    })
+    assert _scores(r.json()) == [10, 20]
+
+
+def test_end_at_inclusive(firestore_client):
+    """endAt with before=False: include the cursor document."""
+    _seed_cursor_col(firestore_client, "cur4", [("a", 10), ("b", 20), ("c", 30), ("d", 40)])
+    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
+        "structuredQuery": {
+            "from": [{"collectionId": "cur4"}],
+            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+            "endAt": {"values": [{"integerValue": "30"}], "before": False},
+        }
+    })
+    assert _scores(r.json()) == [10, 20, 30]
+
+
+def test_start_at_and_end_at_window(firestore_client):
+    """Both cursors together define a window."""
+    _seed_cursor_col(firestore_client, "cur5", [(f"d{i}", i * 10) for i in range(6)])
+    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
+        "structuredQuery": {
+            "from": [{"collectionId": "cur5"}],
+            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+            "startAt": {"values": [{"integerValue": "10"}], "before": True},
+            "endAt":   {"values": [{"integerValue": "30"}], "before": False},
+        }
+    })
+    assert _scores(r.json()) == [10, 20, 30]
+
+
+def test_cursor_with_descending_order(firestore_client):
+    """Cursors respect DESCENDING sort direction."""
+    _seed_cursor_col(firestore_client, "cur6", [("a", 10), ("b", 20), ("c", 30), ("d", 40)])
+    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
+        "structuredQuery": {
+            "from": [{"collectionId": "cur6"}],
+            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "DESCENDING"}],
+            "startAt": {"values": [{"integerValue": "30"}], "before": True},
+        }
+    })
+    # Descending order: 40, 30, 20, 10. startAt 30 inclusive → 30, 20, 10
+    assert _scores(r.json()) == [30, 20, 10]
+
+
+def test_cursor_with_limit(firestore_client):
+    """Cursors compose correctly with LIMIT for page-by-page iteration."""
+    _seed_cursor_col(firestore_client, "cur7", [(f"d{i}", i * 5) for i in range(8)])
+    # Page 1: first 3 docs
+    r1 = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
+        "structuredQuery": {
+            "from": [{"collectionId": "cur7"}],
+            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+            "limit": 3,
+        }
+    })
+    page1 = _scores(r1.json())
+    assert page1 == [0, 5, 10]
+
+    # Page 2: startAfter the last doc on page 1
+    last_score = page1[-1]
+    r2 = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
+        "structuredQuery": {
+            "from": [{"collectionId": "cur7"}],
+            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+            "startAt": {"values": [{"integerValue": str(last_score)}], "before": False},
+            "limit": 3,
+        }
+    })
+    assert _scores(r2.json()) == [15, 20, 25]
+
+
 def test_transform_multiple_in_one_write(firestore_client):
     firestore_client.post(
         f"/v1/{DOCS}/multi",
