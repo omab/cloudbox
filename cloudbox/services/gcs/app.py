@@ -12,6 +12,62 @@ from typing import Annotated
 from fastapi import FastAPI, Header, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
+
+def _parse_range(range_header: str, total: int) -> tuple[int, int] | None:
+    """Parse a Range header and return (start, end) byte positions (inclusive).
+
+    Returns None if the header is absent, malformed, or unsatisfiable.
+    Supports: bytes=start-end, bytes=start-, bytes=-suffix
+    """
+    if not range_header or not range_header.startswith("bytes="):
+        return None
+    spec = range_header[len("bytes="):]
+    if spec.startswith("-"):
+        try:
+            suffix = int(spec[1:])
+        except ValueError:
+            return None
+        start = max(total - suffix, 0)
+        end = total - 1
+    elif spec.endswith("-"):
+        try:
+            start = int(spec[:-1])
+        except ValueError:
+            return None
+        end = total - 1
+    else:
+        parts = spec.split("-", 1)
+        if len(parts) != 2:
+            return None
+        try:
+            start, end = int(parts[0]), int(parts[1])
+        except ValueError:
+            return None
+    if start > end or start >= total:
+        return None
+    end = min(end, total - 1)
+    return start, end
+
+
+def _range_response(body: bytes, content_type: str, range_header: str | None) -> Response:
+    """Return a full 200 or partial 206 response depending on the Range header."""
+    total = len(body)
+    headers = {"Accept-Ranges": "bytes"}
+    if range_header:
+        parsed = _parse_range(range_header, total)
+        if parsed is None:
+            return Response(
+                status_code=416,
+                headers={"Content-Range": f"bytes */{total}"},
+            )
+        start, end = parsed
+        chunk = body[start: end + 1]
+        headers["Content-Range"] = f"bytes {start}-{end}/{total}"
+        headers["Content-Length"] = str(len(chunk))
+        return Response(content=chunk, status_code=206, media_type=content_type, headers=headers)
+    headers["Content-Length"] = str(total)
+    return Response(content=body, status_code=200, media_type=content_type, headers=headers)
+
 from cloudbox.core.errors import GCPError, add_gcp_exception_handler
 from cloudbox.core.middleware import add_request_logging
 from cloudbox.services.gcs.models import (
@@ -490,7 +546,12 @@ async def list_objects(
 
 
 @app.get("/storage/v1/b/{bucket}/o/{object_name:path}")
-async def get_object_metadata(bucket: str, object_name: str, alt: str = Query(default="")):
+async def get_object_metadata(
+    bucket: str,
+    object_name: str,
+    alt: str = Query(default=""),
+    range: Annotated[str | None, Header(alias="range")] = None,
+):
     store = _store()
     key = f"{bucket}/{object_name}"
     data = store.get("objects", key)
@@ -500,13 +561,17 @@ async def get_object_metadata(bucket: str, object_name: str, alt: str = Query(de
     if alt == "media":
         body = store.get("bodies", key) or b""
         ct = data.get("contentType", "application/octet-stream")
-        return Response(content=body, media_type=ct)
+        return _range_response(body, ct, range)
 
     return data
 
 
 @app.get("/download/storage/v1/b/{bucket}/o/{object_name:path}")
-async def download_object(bucket: str, object_name: str):
+async def download_object(
+    bucket: str,
+    object_name: str,
+    range: Annotated[str | None, Header(alias="range")] = None,
+):
     store = _store()
     key = f"{bucket}/{object_name}"
     data = store.get("objects", key)
@@ -514,7 +579,7 @@ async def download_object(bucket: str, object_name: str):
         raise GCPError(404, f"No such object: {bucket}/{object_name}")
     body = store.get("bodies", key) or b""
     ct = data.get("contentType", "application/octet-stream")
-    return Response(content=body, media_type=ct)
+    return _range_response(body, ct, range)
 
 
 @app.patch("/storage/v1/b/{bucket}/o/{object_name:path}")

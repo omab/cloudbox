@@ -363,3 +363,88 @@ def test_create_notification_missing_bucket_returns_404(gcs_client):
         json={"topic": "projects/p/topics/t", "payload_format": "JSON_API_V1"},
     )
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Byte-range downloads
+# ---------------------------------------------------------------------------
+
+def _upload(gcs_client, bucket, name, content):
+    gcs_client.post("/storage/v1/b", json={"name": bucket})
+    gcs_client.post(
+        f"/upload/storage/v1/b/{bucket}/o?name={name}&uploadType=media",
+        content=content,
+        headers={"content-type": "application/octet-stream"},
+    )
+
+
+def test_range_full_via_alt_media(gcs_client):
+    _upload(gcs_client, "rbkt", "file.bin", b"0123456789")
+    r = gcs_client.get(
+        "/storage/v1/b/rbkt/o/file.bin?alt=media",
+        headers={"range": "bytes=0-9"},
+    )
+    assert r.status_code == 206
+    assert r.content == b"0123456789"
+    assert r.headers["content-range"] == "bytes 0-9/10"
+
+
+def test_range_partial_via_alt_media(gcs_client):
+    _upload(gcs_client, "rbkt2", "file.bin", b"abcdefghij")
+    r = gcs_client.get(
+        "/storage/v1/b/rbkt2/o/file.bin?alt=media",
+        headers={"range": "bytes=2-5"},
+    )
+    assert r.status_code == 206
+    assert r.content == b"cdef"
+    assert r.headers["content-range"] == "bytes 2-5/10"
+
+
+def test_range_open_end(gcs_client):
+    _upload(gcs_client, "rbkt3", "file.bin", b"abcdefghij")
+    r = gcs_client.get(
+        "/storage/v1/b/rbkt3/o/file.bin?alt=media",
+        headers={"range": "bytes=7-"},
+    )
+    assert r.status_code == 206
+    assert r.content == b"hij"
+    assert r.headers["content-range"] == "bytes 7-9/10"
+
+
+def test_range_suffix(gcs_client):
+    _upload(gcs_client, "rbkt4", "file.bin", b"abcdefghij")
+    r = gcs_client.get(
+        "/storage/v1/b/rbkt4/o/file.bin?alt=media",
+        headers={"range": "bytes=-3"},
+    )
+    assert r.status_code == 206
+    assert r.content == b"hij"
+    assert r.headers["content-range"] == "bytes 7-9/10"
+
+
+def test_range_unsatisfiable_returns_416(gcs_client):
+    _upload(gcs_client, "rbkt5", "file.bin", b"hello")
+    r = gcs_client.get(
+        "/storage/v1/b/rbkt5/o/file.bin?alt=media",
+        headers={"range": "bytes=100-200"},
+    )
+    assert r.status_code == 416
+
+
+def test_no_range_returns_200_with_accept_ranges(gcs_client):
+    _upload(gcs_client, "rbkt6", "file.bin", b"hello")
+    r = gcs_client.get("/storage/v1/b/rbkt6/o/file.bin?alt=media")
+    assert r.status_code == 200
+    assert r.headers.get("accept-ranges") == "bytes"
+    assert r.content == b"hello"
+
+
+def test_range_via_download_path(gcs_client):
+    _upload(gcs_client, "rbkt7", "file.bin", b"0123456789")
+    r = gcs_client.get(
+        "/download/storage/v1/b/rbkt7/o/file.bin",
+        headers={"range": "bytes=3-6"},
+    )
+    assert r.status_code == 206
+    assert r.content == b"3456"
+    assert r.headers["content-range"] == "bytes 3-6/10"

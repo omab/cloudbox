@@ -340,7 +340,7 @@ Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
 | Object versioning | ❌ | Generation number increments on overwrite but old versions are not retained |
 | MD5 hash + CRC32c checksum | ✅ | Computed and returned on upload |
 | ETag | ✅ | MD5-based |
-| Byte-range downloads (`Range` header) | ❌ | |
+| Byte-range downloads (`Range` header) | ✅ | `bytes=start-end`, `bytes=start-`, `bytes=-suffix`; returns 206 with `Content-Range`; 416 on unsatisfiable range |
 | Conditional requests (`If-Match`, `If-None-Match`) | ❌ | |
 | Pub/Sub notifications (bucket events) | ✅ | `OBJECT_FINALIZE`, `OBJECT_DELETE`, `OBJECT_METADATA_UPDATE` |
 | Notification config CRUD | ✅ | |
