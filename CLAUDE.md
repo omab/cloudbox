@@ -25,7 +25,7 @@ docker compose up
 uv run pytest tests/
 ```
 
-All 406 tests should pass. Tests use `pytest-asyncio` with `asyncio_mode = "auto"` (set in `pyproject.toml`). No external services required — each test file creates its own in-process test client.
+All 571 tests should pass. Tests use `pytest-asyncio` with `asyncio_mode = "auto"` (set in `pyproject.toml`). No external services required — each test file creates its own in-process test client.
 
 ## Project layout
 
@@ -68,10 +68,10 @@ sdk_compat/
   clients.py                Pre-configured GCP SDK client factories
   test_with_sdk.py          Live smoke tests (requires a running instance)
 bin/
-  gcloudlocal.py            Thin shim → cloudbox.gcloudlocal:main (not used by root scripts)
+  gcloudlocal.py            Legacy shim (unused; kept for backwards compat)
   *.sh                      Shell helper scripts
-gcloud                      Root wrapper: uv run python cloudbox/gcloudlocal.py
-gsutil                      Root wrapper: uv run python cloudbox/gsutillocal.py
+gcloud                      Wrapper script: uv run python cloudbox/gcloudlocal.py "$@"
+gsutil                      Wrapper script: uv run python cloudbox/gsutillocal.py "$@"
 ```
 
 ## Service pattern
