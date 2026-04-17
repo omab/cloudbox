@@ -674,3 +674,98 @@ def test_bool_and_string_params(bq_client):
     rows = r.json()["rows"]
     assert len(rows) == 1
     assert rows[0]["f"][0]["v"] == "yes"
+
+
+# ---------------------------------------------------------------------------
+# Views
+# ---------------------------------------------------------------------------
+
+
+def test_create_and_query_view(bq_client):
+    ds = "vds1"
+    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}})
+    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
+        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "base"},
+        "schema": {"fields": [{"name": "x", "type": "INTEGER"}, {"name": "y", "type": "STRING"}]},
+    })
+    bq_client.post(f"{BASE}/datasets/{ds}/tables/base/insertAll", json={
+        "rows": [{"json": {"x": 1, "y": "a"}}, {"json": {"x": 2, "y": "b"}}, {"json": {"x": 3, "y": "c"}}],
+    })
+
+    # Create view over the table
+    r = bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
+        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "view1"},
+        "view": {"query": f"SELECT x, y FROM `{PROJECT}.{ds}.base` WHERE x > 1", "useLegacySql": False},
+    })
+    assert r.status_code == 200
+    assert r.json()["type"] == "VIEW"
+
+    # GET table returns view metadata
+    r = bq_client.get(f"{BASE}/datasets/{ds}/tables/view1")
+    assert r.status_code == 200
+    assert r.json()["type"] == "VIEW"
+    assert "query" in r.json()["view"]
+
+    # List tables includes the view
+    r = bq_client.get(f"{BASE}/datasets/{ds}/tables")
+    types = {t["tableReference"]["tableId"]: t["type"] for t in r.json()["tables"]}
+    assert types["base"] == "TABLE"
+    assert types["view1"] == "VIEW"
+
+    # Query the view
+    r = bq_client.post(f"{BASE}/queries", json={
+        "query": f"SELECT x, y FROM `{PROJECT}.{ds}.view1` ORDER BY x",
+        "useLegacySql": False,
+    })
+    assert r.status_code == 200
+    rows = r.json()["rows"]
+    assert len(rows) == 2
+    assert rows[0]["f"][0]["v"] == "2"
+    assert rows[1]["f"][0]["v"] == "3"
+
+
+def test_update_view(bq_client):
+    ds = "vds2"
+    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}})
+    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
+        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "src"},
+        "schema": {"fields": [{"name": "n", "type": "INTEGER"}]},
+    })
+    bq_client.post(f"{BASE}/datasets/{ds}/tables/src/insertAll", json={
+        "rows": [{"json": {"n": 10}}, {"json": {"n": 20}}, {"json": {"n": 30}}],
+    })
+    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
+        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "vw"},
+        "view": {"query": f"SELECT n FROM `{PROJECT}.{ds}.src` WHERE n < 20", "useLegacySql": False},
+    })
+
+    # Original view returns n=10 only
+    r = bq_client.post(f"{BASE}/queries", json={"query": f"SELECT n FROM `{PROJECT}.{ds}.vw`", "useLegacySql": False})
+    assert len(r.json()["rows"]) == 1
+
+    # Update view to a wider filter
+    bq_client.patch(f"{BASE}/datasets/{ds}/tables/vw", json={
+        "view": {"query": f"SELECT n FROM `{PROJECT}.{ds}.src` WHERE n <= 20", "useLegacySql": False},
+    })
+
+    r = bq_client.post(f"{BASE}/queries", json={"query": f"SELECT n FROM `{PROJECT}.{ds}.vw` ORDER BY n", "useLegacySql": False})
+    rows = r.json()["rows"]
+    assert len(rows) == 2
+    assert rows[0]["f"][0]["v"] == "10"
+    assert rows[1]["f"][0]["v"] == "20"
+
+
+def test_delete_view(bq_client):
+    ds = "vds3"
+    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}})
+    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
+        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "t"},
+        "schema": {"fields": [{"name": "v", "type": "INTEGER"}]},
+    })
+    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
+        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "vw"},
+        "view": {"query": f"SELECT v FROM `{PROJECT}.{ds}.t`", "useLegacySql": False},
+    })
+    r = bq_client.delete(f"{BASE}/datasets/{ds}/tables/vw")
+    assert r.status_code == 204
+    assert bq_client.get(f"{BASE}/datasets/{ds}/tables/vw").status_code == 404

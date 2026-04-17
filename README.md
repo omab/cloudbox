@@ -497,7 +497,7 @@ Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
 | Parameterized queries (`queryParameters`) | ✅ | Named (`@param`) and positional (`?`) modes; INT64, FLOAT64, BOOL, STRING, BYTES, ARRAY |
 | Partitioned / clustered tables | ❌ | Schema ignored; data stored flat in DuckDB |
 | Table update / schema evolution | ❌ | |
-| Views | ❌ | |
+| Views | ✅ | `CREATE VIEW` backed by DuckDB; create, query, update (`PATCH`/`PUT`), delete; listed with `type: VIEW` |
 | Authorized views | ❌ | |
 | External tables | ❌ | |
 | Scripting / multi-statement queries | 🟡 | Single-statement only; DuckDB may handle simple cases |

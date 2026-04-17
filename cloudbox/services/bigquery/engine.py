@@ -358,9 +358,78 @@ class BigQueryEngine:
         key = f"{project}.{dataset_id}.{table_id}"
         if key not in self._tables:
             return False
-        self._exec(f'DROP TABLE IF EXISTS "{dataset_id}"."{table_id}"')
+        meta = self._tables[key]
+        if meta.get("type") == "VIEW":
+            self._exec(f'DROP VIEW IF EXISTS "{dataset_id}"."{table_id}"')
+        else:
+            self._exec(f'DROP TABLE IF EXISTS "{dataset_id}"."{table_id}"')
         del self._tables[key]
         return True
+
+    def create_view(
+        self, project: str, dataset_id: str, table_id: str, body: dict
+    ) -> dict:
+        ds_key = f"{project}.{dataset_id}"
+        if ds_key not in self._datasets:
+            raise ValueError(f"Dataset not found: {dataset_id}")
+        tbl_key = f"{project}.{dataset_id}.{table_id}"
+        if tbl_key in self._tables:
+            raise ValueError(f"Already exists: table {table_id}")
+
+        view_def = body.get("view", {})
+        query = view_def.get("query", "")
+        if not query:
+            raise ValueError("view.query is required")
+
+        rewritten = _rewrite_sql(query, project)
+        self._exec(f'CREATE VIEW "{dataset_id}"."{table_id}" AS {rewritten}')
+
+        now = _now_ms()
+        location = self._datasets[ds_key].get("location", "US")
+        meta = {
+            "kind": "bigquery#table",
+            "id": f"{project}:{dataset_id}.{table_id}",
+            "tableReference": {
+                "projectId": project,
+                "datasetId": dataset_id,
+                "tableId": table_id,
+            },
+            "view": {"query": query, "useLegacySql": view_def.get("useLegacySql", False)},
+            "location": location,
+            "labels": body.get("labels", {}),
+            "description": body.get("description", ""),
+            "creationTime": now,
+            "lastModifiedTime": now,
+            "type": "VIEW",
+        }
+        self._tables[tbl_key] = meta
+        return meta
+
+    def update_view(
+        self, project: str, dataset_id: str, table_id: str, body: dict
+    ) -> dict:
+        tbl_key = f"{project}.{dataset_id}.{table_id}"
+        meta = self._tables.get(tbl_key)
+        if meta is None:
+            raise ValueError(f"Not found: {table_id}")
+        if meta.get("type") != "VIEW":
+            raise ValueError(f"{table_id} is not a view")
+
+        view_def = body.get("view", {})
+        query = view_def.get("query", "")
+        if not query:
+            raise ValueError("view.query is required")
+
+        rewritten = _rewrite_sql(query, project)
+        self._exec(f'CREATE OR REPLACE VIEW "{dataset_id}"."{table_id}" AS {rewritten}')
+
+        meta["view"] = {"query": query, "useLegacySql": view_def.get("useLegacySql", False)}
+        meta["lastModifiedTime"] = _now_ms()
+        if "description" in body:
+            meta["description"] = body["description"]
+        if "labels" in body:
+            meta["labels"] = body["labels"]
+        return meta
 
     # ------------------------------------------------------------------
     # Jobs / queries
