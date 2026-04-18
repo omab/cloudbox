@@ -2,13 +2,20 @@
 
 Polls every 30 seconds, checks all ENABLED jobs against their cron schedule,
 and dispatches HTTP requests for any that are due.
+
+Retry logic:
+  When a dispatch fails, the job is retried up to retryConfig.retryCount times
+  using exponential backoff (minBackoffDuration * 2^min(attempt-1, maxDoublings),
+  capped at maxBackoffDuration). Retries are also bounded by maxRetryDuration
+  (total wall-clock time from the first failure). Retry state is stored as
+  ephemeral _retry* fields on the job dict.
 """
 from __future__ import annotations
 
 import asyncio
 import base64
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from croniter import croniter
@@ -35,14 +42,39 @@ def _parse_dt(s: str) -> datetime | None:
         return None
 
 
+def _parse_duration_s(s: str) -> float:
+    """Parse a duration string like '5s', '30m', '1h', '1h30m' to seconds."""
+    s = s.strip()
+    if not s or s == "0s":
+        return 0.0
+    total = 0.0
+    import re
+    for value, unit in re.findall(r"(\d+(?:\.\d+)?)([smh])", s):
+        v = float(value)
+        if unit == "s":
+            total += v
+        elif unit == "m":
+            total += v * 60
+        elif unit == "h":
+            total += v * 3600
+    return total
+
+
+def _retry_backoff(retry_config: dict, attempt: int) -> float:
+    """Return seconds to wait before retry attempt N (1-based)."""
+    min_b = _parse_duration_s(retry_config.get("minBackoffDuration", "5s"))
+    max_b = _parse_duration_s(retry_config.get("maxBackoffDuration", "3600s"))
+    doublings = int(retry_config.get("maxDoublings", 5))
+    exponent = min(attempt - 1, doublings)
+    return min(min_b * (2 ** exponent), max_b)
+
+
 def _is_due(schedule: str, last_attempt: str, now: datetime) -> bool:
     """Return True if the job's schedule has fired since the last attempt."""
     try:
         last = _parse_dt(last_attempt)
-        # base: the point from which we look for the next occurrence
         if last is None:
-            # Never run — fire immediately on first poll
-            return True
+            return True  # Never run — fire immediately on first poll
         cron = croniter(schedule, last)
         next_run = cron.get_next(datetime).replace(tzinfo=timezone.utc)
         return next_run <= now
@@ -80,29 +112,84 @@ async def _tick(client: httpx.AsyncClient) -> None:
     for job in store.list("jobs"):
         if job.get("state") != "ENABLED":
             continue
+
         schedule = job.get("schedule", "")
-        if not schedule:
-            continue
-        if not _is_due(schedule, job.get("lastAttemptTime", ""), now):
-            continue
+        retry_attempt = job.get("_retryAttempt", 0)
+
+        if retry_attempt > 0:
+            # Job is in retry state — check if the retry delay has elapsed
+            next_retry = _parse_dt(job.get("_nextRetryTime", ""))
+            if next_retry and next_retry > now:
+                continue
+        else:
+            # Normal schedule check
+            if not schedule:
+                continue
+            if not _is_due(schedule, job.get("lastAttemptTime", ""), now):
+                continue
 
         http_target = job.get("httpTarget")
         if not http_target:
             continue
 
         job_name = job["name"]
-        logger.info("Firing scheduled job %s", job_name)
         job["lastAttemptTime"] = now_str
-        job["scheduleTime"] = _next_run_time(schedule, now)
+
+        if retry_attempt == 0:
+            # First attempt: advance the schedule and record retry start time
+            job["scheduleTime"] = _next_run_time(schedule, now)
+            job["_retryStartTime"] = now_str
+            logger.info("Firing scheduled job %s", job_name)
+        else:
+            logger.info("Retrying job %s (attempt %d)", job_name, retry_attempt + 1)
 
         try:
             await _dispatch(client, http_target)
             job["status"] = {}
+            _clear_retry_state(job)
         except Exception as exc:
-            logger.warning("Job %s dispatch failed: %s", job_name, exc)
+            logger.warning("Job %s dispatch failed (attempt %d): %s", job_name, retry_attempt + 1, exc)
             job["status"] = {"code": 2, "message": str(exc)}
+            _schedule_retry(job, retry_attempt, now)
 
         store.set("jobs", job_name, job)
+
+
+def _schedule_retry(job: dict, current_attempt: int, now: datetime) -> None:
+    """Set retry state on the job dict, or clear it if retries are exhausted."""
+    retry_config = job.get("retryConfig", {})
+    max_retries = int(retry_config.get("retryCount", 0))
+
+    if max_retries <= 0:
+        _clear_retry_state(job)
+        return
+
+    next_attempt = current_attempt + 1
+    if next_attempt > max_retries:
+        logger.warning("Job %s exhausted %d retries", job["name"], max_retries)
+        _clear_retry_state(job)
+        return
+
+    # Check maxRetryDuration
+    max_dur_s = _parse_duration_s(retry_config.get("maxRetryDuration", "0s"))
+    if max_dur_s > 0:
+        retry_start = _parse_dt(job.get("_retryStartTime", "")) or now
+        elapsed = (now - retry_start).total_seconds()
+        if elapsed >= max_dur_s:
+            logger.warning("Job %s exceeded maxRetryDuration (%.0fs)", job["name"], max_dur_s)
+            _clear_retry_state(job)
+            return
+
+    delay = _retry_backoff(retry_config, next_attempt)
+    next_retry_dt = now + timedelta(seconds=delay)
+    job["_retryAttempt"] = next_attempt
+    job["_nextRetryTime"] = next_retry_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    logger.debug("Job %s scheduled for retry %d in %.1fs", job["name"], next_attempt, delay)
+
+
+def _clear_retry_state(job: dict) -> None:
+    for key in ("_retryAttempt", "_nextRetryTime", "_retryStartTime"):
+        job.pop(key, None)
 
 
 async def _dispatch(client: httpx.AsyncClient, http_target: dict) -> None:

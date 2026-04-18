@@ -523,7 +523,7 @@ Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
 | Pub/Sub target | ❌ | |
 | App Engine target | ❌ | |
 | OIDC / OAuth auth for HTTP target | ❌ | Requests sent without auth headers |
-| Retry configuration | ❌ | Failed jobs are not retried |
+| Retry configuration | ✅ | Exponential backoff (`minBackoffDuration * 2^min(attempt-1, maxDoublings)`, capped at `maxBackoffDuration`); bounded by `retryCount` and `maxRetryDuration` |
 | Timezone support | 🟡 | Parsed by `croniter`; UTC works reliably, some IANA zones may differ from GCP |
 
 ### Cloud Spanner

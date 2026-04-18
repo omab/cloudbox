@@ -1,4 +1,4 @@
-"""Cloud Scheduler — create, list, pause, resume, and delete jobs.
+"""Cloud Scheduler — create, list, pause, resume, delete jobs, and configure retry.
 
     uv run python examples/scheduler/jobs.py
 """
@@ -52,9 +52,34 @@ def main():
     r = ok(http.get(f"{SCHEDULER_BASE}/v1/{job_name}"))
     print(f"After resume: {r.json().get('state')}")
 
+    # Create a job with retry configuration
+    retry_job_name = f"{parent}/jobs/retry-job"
+    ok(http.post(
+        f"{SCHEDULER_BASE}/v1/{parent}/jobs",
+        json={
+            "name": retry_job_name,
+            "schedule": "0 * * * *",
+            "timeZone": "UTC",
+            "httpTarget": {"uri": "http://localhost:8080/cron", "httpMethod": "POST"},
+            "retryConfig": {
+                "retryCount": 5,
+                "minBackoffDuration": "5s",
+                "maxBackoffDuration": "300s",
+                "maxDoublings": 4,
+                "maxRetryDuration": "10m",
+            },
+        },
+    ))
+    r = ok(http.get(f"{SCHEDULER_BASE}/v1/{retry_job_name}"))
+    rc = r.json()["retryConfig"]
+    print(f"\nRetry job config: retryCount={rc['retryCount']}, "
+          f"minBackoff={rc['minBackoffDuration']}, maxBackoff={rc['maxBackoffDuration']}, "
+          f"maxDoublings={rc['maxDoublings']}, maxDuration={rc['maxRetryDuration']}")
+
     # Cleanup
     http.delete(f"{SCHEDULER_BASE}/v1/{job_name}")
-    print("Deleted job")
+    http.delete(f"{SCHEDULER_BASE}/v1/{retry_job_name}")
+    print("Deleted jobs")
 
 
 if __name__ == "__main__":

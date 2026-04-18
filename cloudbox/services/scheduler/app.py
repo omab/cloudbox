@@ -58,6 +58,7 @@ async def create_job(project: str, location: str, request: Request):
         timeZone=body.get("timeZone", "UTC"),
         state="ENABLED",
         httpTarget=body.get("httpTarget"),
+        retryConfig=body.get("retryConfig", {}),
         userUpdateTime=now,
         scheduleTime=_next_run_time(schedule, datetime.now(timezone.utc)) if schedule else "",
     )

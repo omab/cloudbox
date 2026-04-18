@@ -1,4 +1,5 @@
 """Tests for Cloud Scheduler emulator."""
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 PROJECT = "local-project"
@@ -141,3 +142,112 @@ def test_worker_not_due_just_ran():
     last = (datetime.now(timezone.utc) - timedelta(seconds=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
     now = datetime.now(timezone.utc)
     assert _is_due("0 * * * *", last, now) is False
+
+
+# ---------------------------------------------------------------------------
+# Retry backoff helpers
+# ---------------------------------------------------------------------------
+
+
+def test_parse_duration_s():
+    from cloudbox.services.scheduler.worker import _parse_duration_s
+    assert _parse_duration_s("0s") == 0.0
+    assert _parse_duration_s("5s") == 5.0
+    assert _parse_duration_s("30m") == 1800.0
+    assert _parse_duration_s("1h") == 3600.0
+    assert _parse_duration_s("1h30m") == 5400.0
+
+
+def test_retry_backoff():
+    from cloudbox.services.scheduler.worker import _retry_backoff
+    cfg = {"minBackoffDuration": "5s", "maxBackoffDuration": "300s", "maxDoublings": 3}
+    assert _retry_backoff(cfg, 1) == pytest.approx(5.0)    # 5 * 2^0
+    assert _retry_backoff(cfg, 2) == pytest.approx(10.0)   # 5 * 2^1
+    assert _retry_backoff(cfg, 3) == pytest.approx(20.0)   # 5 * 2^2
+    assert _retry_backoff(cfg, 4) == pytest.approx(40.0)   # 5 * 2^3 (capped at maxDoublings)
+    assert _retry_backoff(cfg, 5) == pytest.approx(40.0)   # still capped at maxDoublings
+
+
+def test_retry_backoff_capped_at_max():
+    from cloudbox.services.scheduler.worker import _retry_backoff
+    cfg = {"minBackoffDuration": "60s", "maxBackoffDuration": "100s", "maxDoublings": 10}
+    assert _retry_backoff(cfg, 3) == pytest.approx(100.0)  # 60*4=240 capped to 100
+
+
+def test_schedule_retry_sets_state():
+    from cloudbox.services.scheduler.worker import _schedule_retry
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    job = {
+        "name": "projects/p/locations/l/jobs/j",
+        "retryConfig": {"retryCount": 3, "minBackoffDuration": "1s", "maxBackoffDuration": "60s", "maxDoublings": 5},
+        "_retryStartTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    _schedule_retry(job, 0, now)
+    assert job["_retryAttempt"] == 1
+    assert "_nextRetryTime" in job
+
+
+def test_schedule_retry_exhausted():
+    from cloudbox.services.scheduler.worker import _schedule_retry, _clear_retry_state
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    job = {
+        "name": "projects/p/locations/l/jobs/j",
+        "retryConfig": {"retryCount": 2},
+        "_retryStartTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "_retryAttempt": 2,
+    }
+    _schedule_retry(job, 2, now)  # attempt 2 of 2 — exhausted
+    assert "_retryAttempt" not in job
+
+
+def test_schedule_retry_max_duration_exceeded():
+    from cloudbox.services.scheduler.worker import _schedule_retry
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(seconds=120)  # started 2 minutes ago
+    job = {
+        "name": "projects/p/locations/l/jobs/j",
+        "retryConfig": {"retryCount": 10, "maxRetryDuration": "60s"},
+        "_retryStartTime": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    _schedule_retry(job, 0, now)
+    assert "_retryAttempt" not in job  # duration exceeded → no retry
+
+
+def test_schedule_retry_no_retry_count():
+    from cloudbox.services.scheduler.worker import _schedule_retry
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    job = {
+        "name": "projects/p/locations/l/jobs/j",
+        "retryConfig": {"retryCount": 0},
+    }
+    _schedule_retry(job, 0, now)
+    assert "_retryAttempt" not in job
+
+
+def test_update_job_retry_config(scheduler_client):
+    """Verify retryConfig is stored and returned by the API."""
+    scheduler_client.post(BASE, json={
+        "name": f"{BASE.replace('/jobs', '')}/jobs/retry-job",
+        "schedule": "* * * * *",
+        "timeZone": "UTC",
+        "httpTarget": {"uri": "http://localhost:9999/noop"},
+        "retryConfig": {
+            "retryCount": 5,
+            "minBackoffDuration": "2s",
+            "maxBackoffDuration": "120s",
+            "maxDoublings": 4,
+            "maxRetryDuration": "10m",
+        },
+    })
+    r = scheduler_client.get(f"{BASE}/retry-job")
+    assert r.status_code == 200
+    rc = r.json()["retryConfig"]
+    assert rc["retryCount"] == 5
+    assert rc["minBackoffDuration"] == "2s"
+    assert rc["maxBackoffDuration"] == "120s"
+    assert rc["maxDoublings"] == 4
+    assert rc["maxRetryDuration"] == "10m"
