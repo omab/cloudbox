@@ -152,6 +152,77 @@ Packaging is configured in `pyproject.toml` with `[tool.uv] package = true` and 
 
 By default all state is in-memory and lost on restart. Set `CLOUDBOX_DATA_DIR` to a directory path to enable JSON file persistence. The `NamespacedStore` in `cloudbox/core/store.py` handles both modes transparently. Writes are atomic (write to `.tmp`, then `Path.replace()`).
 
+## Code standards
+
+All Python code in this project must follow these standards. Apply them to every file you create or modify — do not leave new code that violates them.
+
+### Linting and formatting
+
+Run ruff after every change:
+
+```bash
+uv run ruff check --fix cloudbox/ tests/   # lint + auto-fix
+uv run ruff format cloudbox/ tests/        # format
+```
+
+The ruff config is in `pyproject.toml`. Key rules enforced:
+
+| Rule set | What it checks |
+|---|---|
+| `E` / `W` | PEP 8 style (pycodestyle) |
+| `F` | Undefined names, unused imports (pyflakes) |
+| `I` | Import sort order (isort) |
+| `UP` | Modern Python syntax (pyupgrade) |
+| `B` | Common bugs and anti-patterns (flake8-bugbear) |
+| `C4` | Idiomatic comprehensions |
+| `D` | Docstrings — Google style (pydocstyle) |
+
+Line length is 100. Quote style is double. Never suppress a ruff error without a comment explaining why.
+
+### Type annotations
+
+All function signatures must carry full type annotations — parameters and return types. Use the modern union syntax (`X | Y` not `Union[X, Y]`) and built-in generics (`list[str]` not `List[str]`) as enforced by `pyupgrade`. Always include `from __future__ import annotations` at the top of every module.
+
+```python
+# correct
+def get_version(secret_name: str, version_id: str) -> str | None:
+    ...
+
+# wrong — missing return type, old-style union
+def get_version(secret_name, version_id) -> Optional[str]:
+    ...
+```
+
+### Docstrings
+
+Every public function, method, and class must have a Google-style docstring. Private helpers (`_name`) are optional but encouraged when the logic is non-obvious.
+
+Format:
+
+```python
+def create_key_ring(project: str, location: str, key_ring_id: str) -> KeyRingModel:
+    """Create a new key ring in the given project and location.
+
+    Args:
+        project: GCP project ID.
+        location: GCP region (e.g. ``us-central1``).
+        key_ring_id: User-supplied key ring identifier.
+
+    Returns:
+        The newly created KeyRingModel.
+
+    Raises:
+        GCPError: If a key ring with the same name already exists (409).
+    """
+```
+
+Rules:
+- One-line summary on the opening line of the docstring, not on a blank line.
+- `Args:`, `Returns:`, and `Raises:` sections use 4-space-indented descriptions.
+- Each `Args` entry: `name: Description.` (no type — it's already in the signature).
+- `Returns:` describes the return value; omit for `-> None` functions.
+- `Raises:` lists only exceptions the function itself raises intentionally.
+
 ## Committing changes
 
 After each meaningful change (bug fix, feature, docs update, refactor), generate a git commit. Do not batch unrelated changes into one commit.
