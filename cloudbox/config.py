@@ -49,6 +49,9 @@ class Settings:
     scheduler_port: int = field(
         default_factory=lambda: int(os.environ.get("CLOUDBOX_SCHEDULER_PORT", "8091"))
     )
+    kms_port: int = field(
+        default_factory=lambda: int(os.environ.get("CLOUDBOX_KMS_PORT", "8092"))
+    )
     admin_port: int = field(
         default_factory=lambda: int(os.environ.get("CLOUDBOX_ADMIN_PORT", "8888"))
     )

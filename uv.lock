@@ -133,6 +133,7 @@ version = "0.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "croniter" },
+    { name = "cryptography" },
     { name = "duckdb" },
     { name = "fastapi" },
     { name = "google-cloud-pubsub" },
@@ -163,6 +164,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "croniter", specifier = ">=1.3" },
+    { name = "cryptography", specifier = ">=42.0" },
     { name = "duckdb", specifier = ">=1.5.2" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "google-cloud-pubsub", specifier = ">=2.21" },

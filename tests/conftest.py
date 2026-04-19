@@ -10,6 +10,7 @@ from cloudbox.services.tasks.app import app as tasks_app
 from cloudbox.services.bigquery.app import app as bigquery_app
 from cloudbox.services.spanner.app import app as spanner_app
 from cloudbox.services.logging.app import app as logging_app
+from cloudbox.services.kms.app import app as kms_app
 from cloudbox.services.scheduler.app import app as scheduler_app
 
 
@@ -24,6 +25,7 @@ def reset_stores():
     from cloudbox.services.bigquery.engine import get_engine as bq_engine
     from cloudbox.services.spanner.engine import get_engine as spanner_engine
     from cloudbox.services.logging.store import get_store as logging_store
+    from cloudbox.services.kms.store import get_store as kms_store
     from cloudbox.services.scheduler.store import get_store as scheduler_store
 
     gcs_store().reset()
@@ -39,6 +41,7 @@ def reset_stores():
     spanner_engine().reset()
     logging_store().reset()
     scheduler_store().reset()
+    kms_store().reset()
     yield
 
 
@@ -85,3 +88,8 @@ def logging_client():
 @pytest.fixture
 def scheduler_client():
     return TestClient(scheduler_app)
+
+
+@pytest.fixture
+def kms_client():
+    return TestClient(kms_app)

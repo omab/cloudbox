@@ -68,12 +68,17 @@ def _get_services() -> dict:
         for inst in sp_instances
     )
 
+    from cloudbox.services.kms.store import get_store as kms_store
     from cloudbox.services.scheduler.store import get_store as scheduler_store
 
     sched = scheduler_store()
     sched_jobs = sched.list("jobs")
     sched_enabled = sum(1 for j in sched_jobs if j.get("state") == "ENABLED")
     sched_paused = sum(1 for j in sched_jobs if j.get("state") == "PAUSED")
+
+    kms = kms_store()
+    kms_key_rings = len(kms.list("keyrings"))
+    kms_keys = len(kms.list("cryptokeys"))
 
     return {
         "gcs": {
@@ -121,6 +126,11 @@ def _get_services() -> dict:
             "port": settings.scheduler_port,
             "stats": {"jobs": len(sched_jobs), "enabled": sched_enabled, "paused": sched_paused},
             "docs_url": f"http://localhost:{settings.scheduler_port}/docs",
+        },
+        "kms": {
+            "port": settings.kms_port,
+            "stats": {"keyRings": kms_key_rings, "cryptoKeys": kms_keys},
+            "docs_url": f"http://localhost:{settings.kms_port}/docs",
         },
     }
 
@@ -1037,6 +1047,35 @@ async def api_sched_delete(job_id: str):
     return Response(status_code=204)
 
 
+# ── Cloud KMS ─────────────────────────────────────────────────────────────────
+
+
+@app.get("/api/kms/keyrings")
+async def api_kms_keyrings():
+    """List all KMS key rings.
+
+    Returns:
+        list[dict]: All key rings sorted by resource name.
+    """
+    from cloudbox.services.kms.store import get_store
+
+    store = get_store()
+    return sorted(store.list("keyrings"), key=lambda x: x.get("name", ""))
+
+
+@app.get("/api/kms/cryptokeys")
+async def api_kms_cryptokeys():
+    """List all KMS crypto keys.
+
+    Returns:
+        list[dict]: All crypto keys sorted by resource name.
+    """
+    from cloudbox.services.kms.store import get_store
+
+    store = get_store()
+    return sorted(store.list("cryptokeys"), key=lambda x: x.get("name", ""))
+
+
 # ---------------------------------------------------------------------------
 # Reset endpoints
 # ---------------------------------------------------------------------------
@@ -1073,6 +1112,7 @@ async def reset_all():
         "spanner",
         "logging",
         "scheduler",
+        "kms",
     ):
         _reset_one(svc)
     return {"reset": "all"}
@@ -1120,6 +1160,10 @@ def _reset_one(service: str) -> None:
         get_store().reset()
     elif service == "scheduler":
         from cloudbox.services.scheduler.store import get_store
+
+        get_store().reset()
+    elif service == "kms":
+        from cloudbox.services.kms.store import get_store
 
         get_store().reset()
 

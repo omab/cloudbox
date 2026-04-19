@@ -128,6 +128,7 @@ const loaders = {
   spanner:   loadSpanner,
   logging:   loadLogging,
   scheduler: loadScheduler,
+  kms:       loadKMS,
 };
 
 function showTab(tab, pushState = true) {
@@ -194,12 +195,13 @@ async function loadOverview() {
       gcs: 'Cloud Storage', pubsub: 'Cloud Pub/Sub',
       firestore: 'Cloud Firestore', secretmanager: 'Secret Manager', tasks: 'Cloud Tasks',
       bigquery: 'BigQuery', spanner: 'Cloud Spanner', logging: 'Cloud Logging', scheduler: 'Cloud Scheduler',
+      kms: 'Cloud KMS',
     };
     // Map stat key → tab name (only services that have a dedicated tab)
     const tabs = {
       gcs: 'gcs', pubsub: 'pubsub', firestore: 'firestore',
       secretmanager: 'secrets', tasks: 'tasks', bigquery: 'bigquery',
-      spanner: 'spanner', logging: 'logging', scheduler: 'scheduler',
+      spanner: 'spanner', logging: 'logging', scheduler: 'scheduler', kms: 'kms',
     };
     let rows = '';
     for (const [svc, info] of Object.entries(d.services || {})) {
@@ -1463,6 +1465,46 @@ function renderLoggingEntries() {
     </div>`;
   const el = $('logging-entries-table');
   if (el) el.innerHTML = table;
+}
+
+// ── Cloud KMS ─────────────────────────────────────────────────────────────────
+
+async function loadKMS() {
+  $('kms-content').innerHTML = '<div class="loading">Loading key rings&hellip;</div>';
+  try {
+    const [rings, keys] = await Promise.all([
+      api('/api/kms/keyrings'),
+      api('/api/kms/cryptokeys'),
+    ]);
+    let ringRows = '';
+    for (const r of rings) {
+      const id = (r.name || '').split('/').pop();
+      ringRows += `<tr><td class="mono">${esc(id)}</td><td class="dim">${esc(r.name)}</td><td class="dim">${(r.createTime||'').substring(0,19).replace('T',' ')}</td></tr>`;
+    }
+    let keyRows = '';
+    for (const k of keys) {
+      const id = (k.name || '').split('/').pop();
+      const primary = k.primary ? k.primary.name.split('/').pop() : '&mdash;';
+      keyRows += `<tr><td class="mono">${esc(id)}</td><td class="mono dim">${esc(k.purpose||'')}</td><td class="dim">${primary}</td><td class="dim">${(k.createTime||'').substring(0,19).replace('T',' ')}</td></tr>`;
+    }
+    $('kms-content').innerHTML = `
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-header"><h2>Key Rings</h2><span class="cnt">${rings.length}</span></div>
+        <table>
+          <thead><tr><th>ID</th><th>Resource Name</th><th>Created</th></tr></thead>
+          <tbody>${ringRows || '<tr><td colspan="3" class="empty">No key rings</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-header"><h2>Crypto Keys</h2><span class="cnt">${keys.length}</span></div>
+        <table>
+          <thead><tr><th>ID</th><th>Purpose</th><th>Primary Version</th><th>Created</th></tr></thead>
+          <tbody>${keyRows || '<tr><td colspan="4" class="empty">No crypto keys</td></tr>'}</tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    $('kms-content').innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
+  }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

@@ -30,6 +30,7 @@ _SERVICES = [
     ("spanner", "Cloud Spanner", lambda: settings.spanner_port),
     ("logging", "Cloud Logging", lambda: settings.logging_port),
     ("scheduler", "Cloud Scheduler", lambda: settings.scheduler_port),
+    ("kms", "Cloud KMS", lambda: settings.kms_port),
     ("admin", "Admin UI", lambda: settings.admin_port),
 ]
 
@@ -47,6 +48,7 @@ def _build_configs() -> list[tuple[str, uvicorn.Config]]:
     from cloudbox.services.gcs.app import app as gcs_app
     from cloudbox.services.logging.app import app as logging_app
     from cloudbox.services.pubsub.app import app as pubsub_app
+    from cloudbox.services.kms.app import app as kms_app
     from cloudbox.services.scheduler.app import app as scheduler_app
     from cloudbox.services.secretmanager.app import app as secretmanager_app
     from cloudbox.services.spanner.app import app as spanner_app
@@ -62,6 +64,7 @@ def _build_configs() -> list[tuple[str, uvicorn.Config]]:
         "spanner": spanner_app,
         "logging": logging_app,
         "scheduler": scheduler_app,
+        "kms": kms_app,
         "admin": admin_app,
     }
 
@@ -194,6 +197,7 @@ def main() -> None:
         settings.pubsub_rest_port,
     )
     logger.info("  Firestore:               use transport='rest' in ClientOptions")
+    logger.info("  Cloud KMS:               GOOGLE_CLOUD_KMS_API_ENDPOINT=http://localhost:%d", settings.kms_port)
     logger.info("  Other services:          REST is the default — no extra config needed")
     logger.info("")
 

@@ -14,6 +14,7 @@ services:
       - "9010:9010"   # Cloud Spanner
       - "9020:9020"   # Cloud Logging
       - "8091:8091"   # Cloud Scheduler
+      - "8092:8092"   # Cloud KMS
       - "8888:8888"   # Admin UI
     environment:
       - CLOUDBOX_PROJECT=local-project
