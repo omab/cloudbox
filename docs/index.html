@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cloudbox — Local emulator for Google Cloud Platform services</title>
-  <meta name="description" content="Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, and Cloud Scheduler entirely on your machine — no real GCP credentials required." />
-  <meta name="keywords" content="GCP emulator, Google Cloud Platform local, Cloud Storage emulator, Pub/Sub emulator, Firestore emulator, BigQuery emulator, Cloud Spanner emulator, Secret Manager emulator, Cloud Tasks emulator, Cloud Scheduler emulator, LocalStack GCP, GCP local development, Python GCP mock" />
+  <meta name="description" content="Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, Cloud Scheduler, and Cloud KMS entirely on your machine — no real GCP credentials required." />
+  <meta name="keywords" content="GCP emulator, Google Cloud Platform local, Cloud Storage emulator, Pub/Sub emulator, Firestore emulator, BigQuery emulator, Cloud Spanner emulator, Secret Manager emulator, Cloud Tasks emulator, Cloud Scheduler emulator, Cloud KMS emulator, LocalStack GCP, GCP local development, Python GCP mock" />
   <meta name="author" content="Matías Aguirre" />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://omab.github.io/cloudbox/" />
@@ -15,14 +15,14 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://omab.github.io/cloudbox/" />
   <meta property="og:title" content="Cloudbox — Local emulator for Google Cloud Platform services" />
-  <meta property="og:description" content="Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, and Cloud Scheduler entirely on your machine — no real GCP credentials required." />
+  <meta property="og:description" content="Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, Cloud Scheduler, and Cloud KMS entirely on your machine — no real GCP credentials required." />
   <meta property="og:image" content="https://omab.github.io/cloudbox/og-image.png" />
   <meta property="og:site_name" content="Cloudbox" />
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Cloudbox — Local emulator for Google Cloud Platform services" />
-  <meta name="twitter:description" content="Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, and Cloud Scheduler entirely on your machine — no real GCP credentials required." />
+  <meta name="twitter:description" content="Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, Cloud Scheduler, and Cloud KMS entirely on your machine — no real GCP credentials required." />
   <meta name="twitter:image" content="https://omab.github.io/cloudbox/og-image.png" />
 
   <!-- JSON-LD structured data -->
@@ -31,7 +31,7 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Cloudbox",
-    "description": "A local emulator for Google Cloud Platform services — Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, and Cloud Scheduler. No real GCP credentials required.",
+    "description": "A local emulator for Google Cloud Platform services — Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, Cloud Scheduler, and Cloud KMS. No real GCP credentials required.",
     "url": "https://omab.github.io/cloudbox/",
     "downloadUrl": "https://pypi.org/project/cloudbox/",
     "installUrl": "https://pypi.org/project/cloudbox/",
@@ -626,6 +626,7 @@
         <div><span class="t-ok">✓</span> <span class="t-svc">Cloud Spanner     </span>  <span class="t-port">:9010</span>  <span class="t-muted">REST / DuckDB</span></div>
         <div><span class="t-ok">✓</span> <span class="t-svc">Cloud Logging     </span>  <span class="t-port">:9020</span>  <span class="t-muted">REST</span></div>
         <div><span class="t-ok">✓</span> <span class="t-svc">Cloud Scheduler   </span>  <span class="t-port">:8091</span>  <span class="t-muted">REST</span></div>
+        <div><span class="t-ok">✓</span> <span class="t-svc">Cloud KMS         </span>  <span class="t-port">:8092</span>  <span class="t-muted">REST</span></div>
         <div><span class="t-ok">✓</span> <span class="t-svc">Admin UI          </span>  <span class="t-port">:8888</span>  <span class="t-muted">HTTP</span></div>
         <br>
         <div><span class="t-cyan">INFO</span><span class="t-muted">     All services ready. Admin UI → </span><span class="t-ok">http://localhost:8888</span></div>
@@ -642,6 +643,7 @@
       <span class="chip">Cloud Spanner</span>
       <span class="chip">Cloud Logging</span>
       <span class="chip">Cloud Scheduler</span>
+      <span class="chip">Cloud KMS</span>
     </div>
   </div>
 </header>
@@ -693,7 +695,7 @@
 <section class="section section-alt" id="services">
   <div class="inner">
     <div class="section-label"># Services</div>
-    <h2 class="section-title">Nine GCP services, one command</h2>
+    <h2 class="section-title">Ten GCP services, one command</h2>
     <p class="section-sub">Each service runs as an independent FastAPI server started concurrently from a single entry point.</p>
     <div class="services-grid">
       <div class="svc-card">
@@ -741,6 +743,11 @@
         <p>Cron jobs, HTTP targets, pause / resume, force-run, exponential retry backoff, background dispatch worker via <code>croniter</code>.</p>
         <span class="svc-port">:8091 · REST</span>
       </div>
+      <div class="svc-card">
+        <div class="svc-name">Cloud KMS</div>
+        <p>Key rings, crypto keys, versioned key material, AES-256-GCM encrypt / decrypt, AAD, key rotation — old ciphertexts remain decryptable after rotation.</p>
+        <span class="svc-port">:8092 · REST</span>
+      </div>
     </div>
   </div>
 </section>
@@ -768,10 +775,10 @@
           </div>
           <pre><code class="language-bash">docker run -p 4443:4443 -p 8080:8080 \
            -p 8085:8085 -p 8086:8086 \
-           -p 8090:8090 -p 8123:8123 \
+           -p 8090:8090 -p 8091:8091 \
+           -p 8092:8092 -p 8123:8123 \
            -p 9050:9050 -p 9010:9010 \
-           -p 9020:9020 -p 8091:8091 \
-           -p 8888:8888 \
+           -p 9020:9020 -p 8888:8888 \
            omab/cloudbox:latest</code></pre>
         </div>
         <p style="margin-top:10px">Admin UI → <a href="http://localhost:8888" target="_blank" rel="noopener">http://localhost:8888</a></p>
@@ -1091,7 +1098,7 @@ gcloudlocal scheduler jobs list</code></pre>
           tests, CLI tools, admin UI, and documentation &mdash; was written through an iterative
           conversation with <a href="https://claude.ai/code" target="_blank" rel="noopener">Claude Code</a>,
           Anthropic's AI coding assistant, with no manual code authoring by the human developer.<br><br>
-          <strong style="color:var(--text)">93% test coverage &nbsp;·&nbsp; 515 tests &nbsp;·&nbsp; Nine GCP services.</strong>
+          <strong style="color:var(--text)">641 tests &nbsp;·&nbsp; Ten GCP services.</strong>
           &nbsp;Feedback, issues, and contributions are welcome.
         </p>
       </div>

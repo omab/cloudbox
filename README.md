@@ -5,7 +5,7 @@
 
 A local emulator for Google Cloud Platform services — like LocalStack, but for GCP.
 
-Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, and Cloud Scheduler entirely on your machine, with no real GCP credentials or network access required.
+Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, Cloud Scheduler, and Cloud KMS entirely on your machine, with no real GCP credentials or network access required.
 
 ## Table of Contents
 
@@ -31,6 +31,7 @@ Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cl
   - [Cloud Spanner](#cloud-spanner-1)
   - [Cloud Logging](#cloud-logging-1)
   - [Cloud Scheduler](#cloud-scheduler-1)
+  - [Cloud KMS](#cloud-kms-1)
 - [Roadmap](#roadmap)
 
 ## About this project
@@ -55,6 +56,7 @@ The feature matrix, test coverage, and architecture reflect real engineering tra
 | Cloud Spanner      | 9010        | REST            |
 | Cloud Logging      | 9020        | REST            |
 | Cloud Scheduler    | 8091        | REST            |
+| Cloud KMS          | 8092        | REST            |
 | Admin UI           | 8888        | HTTP            |
 
 ## Quick Start
@@ -69,7 +71,7 @@ Or pull and run directly from Docker Hub:
 
 ```bash
 docker run --rm -p 4443:4443 -p 8080:8080 -p 8085:8085 -p 8086:8086 \
-  -p 8090:8090 -p 8091:8091 -p 8123:8123 -p 8888:8888 \
+  -p 8090:8090 -p 8091:8091 -p 8092:8092 -p 8123:8123 -p 8888:8888 \
   -p 9010:9010 -p 9020:9020 -p 9050:9050 \
   omab/cloudbox:latest
 ```
@@ -116,6 +118,7 @@ All settings are controlled via environment variables:
 | `CLOUDBOX_TASKS_PORT`         | `8123`         | Cloud Tasks port                                    |
 | `CLOUDBOX_BIGQUERY_PORT`      | `9050`         | BigQuery port                                       |
 | `CLOUDBOX_SCHEDULER_PORT`     | `8091`         | Cloud Scheduler port                                |
+| `CLOUDBOX_KMS_PORT`           | `8092`         | Cloud KMS port                                      |
 | `CLOUDBOX_ADMIN_PORT`         | `8888`         | Admin UI port                                       |
 
 To enable data persistence across restarts, set `CLOUDBOX_DATA_DIR` to a writable path (and mount it as a Docker volume if using containers).
@@ -577,6 +580,27 @@ Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
 | Monitored resource metadata | ❌ | Stored as-is; not validated |
 
 ---
+
+### Cloud KMS
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Create / get / list key ring | ✅ | |
+| Create / get / list / update (labels, rotation config) crypto key | ✅ | Auto-creates version 1 as primary |
+| Create / get / list / update (state) crypto key version | ✅ | |
+| Destroy / restore version | ✅ | Destroy schedules; restore returns to DISABLED |
+| Symmetric encrypt (`ENCRYPT_DECRYPT`) | ✅ | AES-256-GCM per version; ciphertext embeds version name for rotation support |
+| Symmetric decrypt | ✅ | Resolves version from ciphertext; decrypts even after primary rotation |
+| Additional Authenticated Data (AAD) | ✅ | Passed through to AES-GCM; wrong AAD returns 400 |
+| Key rotation (new version becomes primary) | ✅ | Old ciphertexts remain decryptable by their version key |
+| Version state lifecycle (`ENABLED` → `DESTROY_SCHEDULED` → `DISABLED`) | ✅ | |
+| Primary version auto-tracking | ✅ | Highest-numbered ENABLED version is always primary |
+| Asymmetric sign / decrypt / public key | ❌ | Returns 501 Not Implemented |
+| MAC keys | ❌ | |
+| Key import | ❌ | |
+| IAM policies | ❌ | |
+| Hardware Security Module (HSM) | ❌ | Not applicable for local dev |
+| External key manager (EKM) | ❌ | Not applicable for local dev |
 
 ## Roadmap
 

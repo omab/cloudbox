@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Cloudbox is a local emulator for GCP services (Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, Cloud Scheduler). It is written in Python using FastAPI and runs every service as a separate uvicorn server, all started concurrently from a single entry point.
+Cloudbox is a local emulator for GCP services (Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cloud Spanner, Cloud Logging, Cloud Scheduler, Cloud KMS). It is written in Python using FastAPI and runs every service as a separate uvicorn server, all started concurrently from a single entry point.
 
 **Stack:** Python 3.12+, FastAPI, uvicorn, Pydantic v2, grpcio, DuckDB, croniter, uv (package manager)
 
@@ -25,7 +25,7 @@ docker compose up
 uv run pytest tests/
 ```
 
-All 621 tests should pass. Tests use `pytest-asyncio` with `asyncio_mode = "auto"` (set in `pyproject.toml`). No external services required — each test file creates its own in-process test client.
+All 641 tests should pass. Tests use `pytest-asyncio` with `asyncio_mode = "auto"` (set in `pyproject.toml`). No external services required — each test file creates its own in-process test client.
 
 ## Project layout
 
@@ -61,6 +61,10 @@ cloudbox/
       models.py             Pydantic models
       store.py              NamespacedStore wrapper
       worker.py             Background asyncio dispatch loop
+    kms/                    Cloud KMS (port 8092)
+      app.py                FastAPI routes
+      models.py             Pydantic models
+      store.py              NamespacedStore wrapper
   admin/                    Admin UI (port 8888)
 
 tests/                      One file per service (test_gcs.py, test_pubsub.py, …)
@@ -102,6 +106,7 @@ When adding a new service:
 | `CLOUDBOX_LOCATION` | `us-central1` | Default region |
 | `CLOUDBOX_DATA_DIR` | *(unset)* | Enables file-backed persistence |
 | `CLOUDBOX_LOG_LEVEL` | `info` | Log verbosity |
+| `CLOUDBOX_KMS_PORT` | `8092` | Cloud KMS port |
 | Port variables (`CLOUDBOX_*_PORT`) | see config.py | Per-service port overrides |
 
 ## Pub/Sub transport notes
