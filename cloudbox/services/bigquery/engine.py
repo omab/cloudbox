@@ -71,6 +71,17 @@ _DUCK_TO_BQ: dict[str, str] = {
 
 
 def _duck_type_to_bq(duck_type: str) -> str:
+    """Map a DuckDB column type name to its BigQuery equivalent.
+
+    Args:
+        duck_type (str): DuckDB type string, e.g. ``"VARCHAR"``, ``"BIGINT"``,
+            or ``"DECIMAL(38, 9)"``. Parenthesised precision is stripped before
+            lookup.
+
+    Returns:
+        str: BigQuery type name (e.g. ``"STRING"``, ``"INTEGER"``).
+            Falls back to ``"STRING"`` for unknown types.
+    """
     t = duck_type.upper().strip()
     if "(" in t:
         t = t[: t.index("(")].strip()
@@ -78,7 +89,17 @@ def _duck_type_to_bq(duck_type: str) -> str:
 
 
 def _fields_to_ddl(fields: list[dict]) -> str:
-    """Convert a list of BigQuery field defs to a DuckDB column definition string."""
+    """Convert a list of BigQuery field defs to a DuckDB column definition string.
+
+    Args:
+        fields (list[dict]): BigQuery field descriptors; each dict must have
+            ``name`` and ``type`` keys, and optionally a ``mode`` key
+            (``"REQUIRED"`` adds ``NOT NULL``).
+
+    Returns:
+        str: Comma-separated DuckDB column definition string suitable for
+            use inside a ``CREATE TABLE`` statement.
+    """
     parts = []
     for f in fields:
         name = f["name"]
@@ -91,7 +112,18 @@ def _fields_to_ddl(fields: list[dict]) -> str:
 
 
 def _serialize_value(v: Any) -> Any:
-    """Convert a Python value to its BigQuery wire representation (string or None)."""
+    """Convert a Python value to its BigQuery wire representation.
+
+    Args:
+        v (Any): Python value returned by DuckDB — may be ``None``, ``bool``,
+            ``int``, ``float``, a temporal type (``datetime``, ``date``,
+            ``time``), or any other value.
+
+    Returns:
+        Any: ``None`` for null values; ``"true"``/``"false"`` for booleans;
+            ISO-formatted string for temporal types; ``str(v)`` for everything
+            else.
+    """
     if v is None:
         return None
     if isinstance(v, bool):
@@ -117,6 +149,17 @@ def _now_ms() -> str:
 
 
 def _bq_scalar_value(type_name: str, value: str) -> Any:
+    """Coerce a raw string value from a BigQuery queryParameter to a Python type.
+
+    Args:
+        type_name (str): BigQuery type name, e.g. ``"INT64"``, ``"FLOAT64"``,
+            ``"BOOL"``, ``"BYTES"``, or ``"STRING"``.
+        value (str): Raw string value from ``parameterValue.value``.
+
+    Returns:
+        Any: Python-typed value — ``int``, ``float``, ``bool``, ``bytes``,
+            or ``str`` depending on *type_name*.
+    """
     t = type_name.upper()
     if t in ("INT64", "INTEGER", "INT"):
         return int(value) if value else 0
@@ -132,7 +175,16 @@ def _bq_scalar_value(type_name: str, value: str) -> Any:
 
 
 def _bq_param_value(param: dict) -> Any:
-    """Convert a single BigQuery queryParameter object to a Python value."""
+    """Convert a single BigQuery queryParameter object to a Python value.
+
+    Args:
+        param (dict): A BigQuery ``queryParameter`` object with
+            ``parameterType`` and ``parameterValue`` sub-dicts.
+
+    Returns:
+        Any: Python scalar or list of scalars suitable for passing to DuckDB
+            as a bound parameter value.
+    """
     ptype = param.get("parameterType", {})
     pval = param.get("parameterValue", {})
     type_name = ptype.get("type", "STRING").upper()
@@ -149,9 +201,22 @@ def _apply_query_params(
 ) -> tuple[str, list]:
     """Rewrite BQ parameterized SQL to DuckDB positional form.
 
-    Named mode: replaces @name with ? in order of appearance (handles
-    repeated uses of the same parameter).
-    Positional mode: ? is already DuckDB-compatible; values passed as-is.
+    Named mode: replaces ``@name`` with ``?`` in order of appearance, handling
+    repeated uses of the same parameter. Positional mode: ``?`` is already
+    DuckDB-compatible; values are passed through as-is.
+
+    Args:
+        sql (str): BigQuery SQL string potentially containing ``@name`` or
+            ``?`` parameter placeholders.
+        query_parameters (list[dict]): List of BigQuery ``queryParameter``
+            objects.
+        parameter_mode (str): ``"NAMED"`` or ``"POSITIONAL"``; controls how
+            placeholders are matched to *query_parameters*.
+
+    Returns:
+        tuple[str, list]: ``(rewritten_sql, bound_values)`` where
+            *rewritten_sql* has all placeholders converted to ``?`` and
+            *bound_values* is a list of Python values in binding order.
     """
     if not query_parameters:
         return sql, []
@@ -177,7 +242,17 @@ _SELECT_KEYWORDS = ("SELECT", "WITH", "VALUES", "SHOW", "DESCRIBE", "EXPLAIN", "
 
 
 def _is_select(sql: str) -> bool:
-    """Return True if the SQL produces a result set (SELECT-like statements)."""
+    """Return True if the SQL produces a result set.
+
+    Args:
+        sql (str): SQL statement to classify (may have leading whitespace or
+            a leading parenthesis).
+
+    Returns:
+        bool: ``True`` for SELECT-like statements (``SELECT``, ``WITH``,
+            ``VALUES``, ``SHOW``, ``DESCRIBE``, ``EXPLAIN``, ``PRAGMA``);
+            ``False`` for DML/DDL.
+    """
     stripped = sql.strip().lstrip("(").upper()
     return any(stripped.startswith(kw) for kw in _SELECT_KEYWORDS)
 
@@ -206,11 +281,20 @@ _IS_VIEW_MAP: dict[str, str] = {
 def _rewrite_information_schema(sql: str) -> str:
     """Rewrite BigQuery INFORMATION_SCHEMA references to DuckDB information_schema.
 
-    Handles:
-      `project.dataset.INFORMATION_SCHEMA.TABLES`
-      `dataset.INFORMATION_SCHEMA.TABLES`
-      project.dataset.INFORMATION_SCHEMA.TABLES  (unquoted)
-      INFORMATION_SCHEMA.TABLES
+    Handles backtick-quoted and unquoted forms:
+
+    - project.dataset.INFORMATION_SCHEMA.TABLES (backtick-quoted)
+    - dataset.INFORMATION_SCHEMA.TABLES (backtick-quoted)
+    - ``project.dataset.INFORMATION_SCHEMA.TABLES``
+    - ``INFORMATION_SCHEMA.TABLES``
+
+    Args:
+        sql (str): SQL string potentially containing BigQuery
+            ``INFORMATION_SCHEMA`` references.
+
+    Returns:
+        str: SQL with all ``INFORMATION_SCHEMA.*`` references replaced by
+            the DuckDB ``information_schema.*`` equivalent.
     """
 
     def _replacement(m: re.Match) -> str:
@@ -238,10 +322,21 @@ def _rewrite_information_schema(sql: str) -> str:
 def _rewrite_sql(sql: str, project: str) -> str:
     """Rewrite BigQuery SQL identifiers to DuckDB-compatible form.
 
-    - `project.dataset.table`  →  "dataset"."table"
-    - `dataset.table`          →  "dataset"."table"
-    - `identifier`             →  "identifier"
-    - INFORMATION_SCHEMA.*     →  information_schema.*
+    Conversions applied in order:
+
+    - ``INFORMATION_SCHEMA.*`` → ``information_schema.*``
+    - project.dataset.table (backtick-quoted) → ``"dataset"."table"``
+    - dataset.table (backtick-quoted) → ``"dataset"."table"``
+    - identifier (backtick-quoted) → ``"identifier"``
+
+    Args:
+        sql (str): Raw BigQuery SQL, potentially using backtick-quoted,
+            project-qualified table references.
+        project (str): GCP project ID — used to strip the project prefix from
+            3-part identifiers.
+
+    Returns:
+        str: SQL rewritten with DuckDB double-quoted identifiers.
     """
     # Rewrite INFORMATION_SCHEMA references before identifier quoting
     sql = _rewrite_information_schema(sql)
@@ -288,14 +383,32 @@ class BigQueryEngine:
     # ------------------------------------------------------------------
 
     def _exec(self, sql: str, params: list | None = None) -> None:
-        """Execute a DDL or DML statement (no result needed)."""
+        """Execute a DDL or DML statement, discarding any result.
+
+        Args:
+            sql (str): SQL statement to execute.
+            params (list | None): Positional bind parameters for ``?``
+                placeholders, or ``None`` for no parameters.
+        """
         with self._lock:
             self._conn.execute(sql, params or [])
 
     def _select(
         self, sql: str, params: list | None = None
     ) -> tuple[list[tuple[str, str]], list[tuple]]:
-        """Execute a SELECT and return ([(col_name, bq_type), ...], rows)."""
+        """Execute a SELECT and return column descriptors with all result rows.
+
+        Args:
+            sql (str): SELECT (or DML) statement to execute.
+            params (list | None): Positional bind parameters for ``?``
+                placeholders, or ``None`` for no parameters.
+
+        Returns:
+            tuple[list[tuple[str, str]], list[tuple]]: A 2-tuple of
+                ``(columns, rows)`` where *columns* is a list of
+                ``(col_name, bq_type)`` pairs and *rows* is a list of
+                value tuples.
+        """
         with self._lock:
             self._conn.execute(sql, params or [])
             desc = self._conn.description or []
@@ -319,7 +432,21 @@ class BigQueryEngine:
     # ------------------------------------------------------------------
 
     def create_dataset(self, project: str, dataset_id: str, body: dict) -> dict:
-        """Create a new dataset and its DuckDB schema."""
+        """Create a new dataset and its backing DuckDB schema.
+
+        Args:
+            project (str): GCP project ID.
+            dataset_id (str): Dataset identifier to create.
+            body (dict): BigQuery dataset resource body; ``location``,
+                ``labels``, and ``description`` are extracted if present.
+
+        Returns:
+            dict: BigQuery dataset resource metadata dict.
+
+        Raises:
+            ValueError: If a dataset with the same ID already exists in
+                *project*.
+        """
         key = f"{project}.{dataset_id}"
         if key in self._datasets:
             raise ValueError(f"Already exists: dataset {dataset_id}")
@@ -339,16 +466,48 @@ class BigQueryEngine:
         return meta
 
     def get_dataset(self, project: str, dataset_id: str) -> dict | None:
-        """Return dataset metadata or None if not found."""
+        """Return dataset metadata, or None if it does not exist.
+
+        Args:
+            project (str): GCP project ID.
+            dataset_id (str): Dataset identifier to look up.
+
+        Returns:
+            dict | None: BigQuery dataset resource dict, or ``None`` if not
+                found.
+        """
         return self._datasets.get(f"{project}.{dataset_id}")
 
     def list_datasets(self, project: str) -> list[dict]:
-        """Return all dataset metadata dicts for the given project."""
+        """Return all dataset metadata dicts for the given project.
+
+        Args:
+            project (str): GCP project ID to filter by.
+
+        Returns:
+            list[dict]: List of BigQuery dataset resource dicts (may be empty).
+        """
         prefix = f"{project}."
         return [v for k, v in self._datasets.items() if k.startswith(prefix)]
 
     def delete_dataset(self, project: str, dataset_id: str, delete_contents: bool = False) -> bool:
-        """Delete a dataset and optionally all its tables; return False if not found."""
+        """Delete a dataset and, optionally, all of its tables.
+
+        Args:
+            project (str): GCP project ID.
+            dataset_id (str): Dataset identifier to delete.
+            delete_contents (bool): When ``True``, also drops all tables in
+                the dataset. When ``False``, raises ``ValueError`` if the
+                dataset is non-empty.
+
+        Returns:
+            bool: ``True`` if the dataset was found and deleted; ``False`` if
+                it did not exist.
+
+        Raises:
+            ValueError: If the dataset contains tables and *delete_contents*
+                is ``False``.
+        """
         key = f"{project}.{dataset_id}"
         if key not in self._datasets:
             return False
@@ -371,7 +530,22 @@ class BigQueryEngine:
     # ------------------------------------------------------------------
 
     def create_table(self, project: str, dataset_id: str, table_id: str, body: dict) -> dict:
-        """Create a new table with the given schema in DuckDB."""
+        """Create a new table with the given schema in DuckDB.
+
+        Args:
+            project (str): GCP project ID.
+            dataset_id (str): Dataset that will own the table.
+            table_id (str): Table identifier to create.
+            body (dict): BigQuery table resource body; ``schema.fields`` is
+                required and must contain at least one field descriptor.
+
+        Returns:
+            dict: BigQuery table resource metadata dict.
+
+        Raises:
+            ValueError: If the dataset does not exist, the table already
+                exists, or no schema fields are provided.
+        """
         ds_key = f"{project}.{dataset_id}"
         if ds_key not in self._datasets:
             raise ValueError(f"Dataset not found: {dataset_id}")
@@ -410,7 +584,22 @@ class BigQueryEngine:
         return meta
 
     def update_table(self, project: str, dataset_id: str, table_id: str, body: dict) -> dict:
-        """Add new columns and update metadata for an existing table."""
+        """Add new columns and update metadata for an existing table.
+
+        Args:
+            project (str): GCP project ID.
+            dataset_id (str): Dataset containing the table.
+            table_id (str): Table identifier to update.
+            body (dict): BigQuery table resource body; new fields in
+                ``schema.fields`` are ``ALTER TABLE … ADD COLUMN``-ed;
+                ``description`` and ``labels`` are merged.
+
+        Returns:
+            dict: Updated BigQuery table resource metadata dict.
+
+        Raises:
+            ValueError: If the table does not exist or is a view.
+        """
         tbl_key = f"{project}.{dataset_id}.{table_id}"
         meta = self._tables.get(tbl_key)
         if meta is None:
@@ -438,16 +627,44 @@ class BigQueryEngine:
         return meta
 
     def get_table(self, project: str, dataset_id: str, table_id: str) -> dict | None:
-        """Return table metadata or None if not found."""
+        """Return table (or view) metadata, or None if it does not exist.
+
+        Args:
+            project (str): GCP project ID.
+            dataset_id (str): Dataset containing the table.
+            table_id (str): Table or view identifier to look up.
+
+        Returns:
+            dict | None: BigQuery table resource dict, or ``None`` if not
+                found.
+        """
         return self._tables.get(f"{project}.{dataset_id}.{table_id}")
 
     def list_tables(self, project: str, dataset_id: str) -> list[dict]:
-        """Return all table metadata dicts in the given dataset."""
+        """Return all table and view metadata dicts in the given dataset.
+
+        Args:
+            project (str): GCP project ID.
+            dataset_id (str): Dataset to list tables from.
+
+        Returns:
+            list[dict]: List of BigQuery table resource dicts (may be empty).
+        """
         prefix = f"{project}.{dataset_id}."
         return [v for k, v in self._tables.items() if k.startswith(prefix)]
 
     def delete_table(self, project: str, dataset_id: str, table_id: str) -> bool:
-        """Drop a table or view from DuckDB; return False if not found."""
+        """Drop a table or view from DuckDB.
+
+        Args:
+            project (str): GCP project ID.
+            dataset_id (str): Dataset containing the table.
+            table_id (str): Table or view identifier to delete.
+
+        Returns:
+            bool: ``True`` if the table was found and deleted; ``False`` if it
+                did not exist.
+        """
         key = f"{project}.{dataset_id}.{table_id}"
         if key not in self._tables:
             return False
@@ -460,7 +677,22 @@ class BigQueryEngine:
         return True
 
     def create_view(self, project: str, dataset_id: str, table_id: str, body: dict) -> dict:
-        """Create a DuckDB view from a BigQuery view definition."""
+        """Create a DuckDB view from a BigQuery view definition.
+
+        Args:
+            project (str): GCP project ID.
+            dataset_id (str): Dataset that will own the view.
+            table_id (str): View identifier to create.
+            body (dict): BigQuery table resource body; ``view.query`` is
+                required and will be rewritten for DuckDB compatibility.
+
+        Returns:
+            dict: BigQuery table resource metadata dict with ``type="VIEW"``.
+
+        Raises:
+            ValueError: If the dataset does not exist, the view already
+                exists, or ``view.query`` is missing.
+        """
         ds_key = f"{project}.{dataset_id}"
         if ds_key not in self._datasets:
             raise ValueError(f"Dataset not found: {dataset_id}")
@@ -498,7 +730,23 @@ class BigQueryEngine:
         return meta
 
     def update_view(self, project: str, dataset_id: str, table_id: str, body: dict) -> dict:
-        """Replace a DuckDB view's query and update its metadata."""
+        """Replace a DuckDB view's query and update its metadata.
+
+        Args:
+            project (str): GCP project ID.
+            dataset_id (str): Dataset containing the view.
+            table_id (str): View identifier to update.
+            body (dict): BigQuery table resource body; ``view.query`` is
+                required and replaces the existing query via
+                ``CREATE OR REPLACE VIEW``.
+
+        Returns:
+            dict: Updated BigQuery table resource metadata dict.
+
+        Raises:
+            ValueError: If the resource does not exist, is not a view, or
+                ``view.query`` is missing.
+        """
         tbl_key = f"{project}.{dataset_id}.{table_id}"
         meta = self._tables.get(tbl_key)
         if meta is None:
@@ -535,7 +783,26 @@ class BigQueryEngine:
         query_parameters: list | None = None,
         parameter_mode: str = "NONE",
     ) -> dict:
-        """Execute a SQL query against DuckDB and store the resulting job record."""
+        """Execute a SQL query against DuckDB and store the resulting job record.
+
+        Args:
+            project (str): GCP project ID that owns the job.
+            job_id (str): Caller-supplied or auto-generated job identifier.
+            query (str): BigQuery SQL string, potentially with backtick
+                identifiers and parameter placeholders.
+            use_legacy_sql (bool): Stored in the job config for fidelity;
+                not actually interpreted.
+            query_parameters (list | None): List of BigQuery
+                ``queryParameter`` objects, or ``None``.
+            parameter_mode (str): ``"NAMED"``, ``"POSITIONAL"``, or
+                ``"NONE"``.
+
+        Returns:
+            dict: BigQuery job resource dict. Successful jobs include a
+                ``_result`` key with ``schema``, ``rows``, and ``totalRows``.
+                Failed jobs have ``_result`` set to ``None`` and an
+                ``errorResult`` in ``status``.
+        """
         rewritten = _rewrite_sql(query, project)
         if query_parameters:
             rewritten, duck_params = _apply_query_params(
@@ -624,11 +891,30 @@ class BigQueryEngine:
         return job
 
     def get_job(self, project: str, job_id: str) -> dict | None:
-        """Return job metadata or None if not found."""
+        """Return job metadata, or None if it does not exist.
+
+        Args:
+            project (str): GCP project ID.
+            job_id (str): Job identifier to look up.
+
+        Returns:
+            dict | None: BigQuery job resource dict (including the internal
+                ``_result`` key), or ``None`` if not found.
+        """
         return self._jobs.get(f"{project}.{job_id}")
 
     def get_query_results(self, project: str, job_id: str) -> dict | None:
-        """Return paged query results for a completed job, or None if not found."""
+        """Return paged query results for a completed job.
+
+        Args:
+            project (str): GCP project ID.
+            job_id (str): Job identifier whose results to retrieve.
+
+        Returns:
+            dict | None: BigQuery ``queryResponse``-shaped dict with
+                ``schema``, ``rows``, and ``totalRows``; or ``None`` if the
+                job does not exist.
+        """
         job = self._jobs.get(f"{project}.{job_id}")
         if job is None:
             return None
@@ -659,9 +945,22 @@ class BigQueryEngine:
         table_id: str,
         rows: list[dict],
     ) -> list[dict]:
-        """Insert rows via the tabledata.insertAll path.
+        """Insert rows via the tabledata.insertAll streaming path.
 
-        Returns a list of per-row error dicts (empty on full success).
+        Args:
+            project (str): GCP project ID.
+            dataset_id (str): Dataset containing the target table.
+            table_id (str): Table identifier to insert rows into.
+            rows (list[dict]): List of BigQuery row envelopes, each with a
+                ``json`` key containing the row's field values.
+
+        Returns:
+            list[dict]: List of per-row error dicts for rows that failed;
+                empty on full success. Each entry has ``index`` and
+                ``errors`` keys.
+
+        Raises:
+            ValueError: If the target table does not exist.
         """
         tbl_key = f"{project}.{dataset_id}.{table_id}"
         if tbl_key not in self._tables:
@@ -701,7 +1000,24 @@ class BigQueryEngine:
         max_results: int = 1000,
         page_token: str = "",
     ) -> dict:
-        """Read a page of rows from a table via tabledata.list."""
+        """Read a page of rows from a table via the tabledata.list path.
+
+        Args:
+            project (str): GCP project ID.
+            dataset_id (str): Dataset containing the table.
+            table_id (str): Table identifier to read from.
+            max_results (int): Maximum number of rows to return per page.
+            page_token (str): Opaque token from a previous response; encodes
+                the row offset as a decimal integer string.
+
+        Returns:
+            dict: BigQuery ``tableDataList``-shaped dict with ``rows``,
+                ``totalRows``, ``schema``, and optionally ``pageToken`` for
+                the next page.
+
+        Raises:
+            ValueError: If the table does not exist.
+        """
         tbl_key = f"{project}.{dataset_id}.{table_id}"
         if tbl_key not in self._tables:
             raise ValueError(f"Table not found: {table_id}")
