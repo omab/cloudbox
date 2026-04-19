@@ -995,6 +995,7 @@ _GSUTIL_SHORTCUTS = frozenset(("ls", "cp", "mv", "mb", "rb", "rm", "cat", "stat"
 
 
 def main() -> None:
+    """Entry point for the gcloudlocal CLI."""
     global _output_format
 
     parser = _build_parser()

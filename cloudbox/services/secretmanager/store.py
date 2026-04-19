@@ -13,4 +13,9 @@ _store = NamespacedStore("secretmanager", settings.data_dir)
 
 
 def get_store() -> NamespacedStore:
+    """Return the shared Secret Manager store instance.
+
+    Returns:
+        The module-level ``NamespacedStore`` used by all Secret Manager route handlers.
+    """
     return _store

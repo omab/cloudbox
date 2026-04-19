@@ -28,6 +28,7 @@ add_request_logging(app, "secretmanager")
 
 
 def _store():
+    """Return the Secret Manager store instance."""
     return get_store()
 
 
@@ -72,6 +73,7 @@ def _resolve_version(secret_name: str, version_id: str) -> str | None:
 
 @app.post("/v1/projects/{project}/secrets")
 async def create_secret(project: str, request: Request):
+    """Create a new secret resource."""
     body = await request.json()
     secret_id = request.query_params.get("secretId", body.get("secretId", ""))
     if not secret_id:
@@ -96,6 +98,7 @@ async def list_secrets(
     pageSize: int = Query(default=25),
     pageToken: str = Query(default=""),
 ):
+    """List secrets in a project."""
     store = _store()
     prefix = f"projects/{project}/secrets/"
     all_secrets = [SecretModel(**v) for v in store.list("secrets") if v["name"].startswith(prefix)]
@@ -110,6 +113,7 @@ async def list_secrets(
 
 @app.get("/v1/projects/{project}/secrets/{secret_id}")
 async def get_secret(project: str, secret_id: str):
+    """Get a secret resource by ID."""
     name = f"projects/{project}/secrets/{secret_id}"
     store = _store()
     data = store.get("secrets", name)
@@ -120,6 +124,7 @@ async def get_secret(project: str, secret_id: str):
 
 @app.patch("/v1/projects/{project}/secrets/{secret_id}")
 async def update_secret(project: str, secret_id: str, request: Request):
+    """Update mutable fields (e.g. labels) on a secret."""
     name = f"projects/{project}/secrets/{secret_id}"
     store = _store()
     data = store.get("secrets", name)
@@ -134,6 +139,7 @@ async def update_secret(project: str, secret_id: str, request: Request):
 
 @app.delete("/v1/projects/{project}/secrets/{secret_id}", status_code=200)
 async def delete_secret(project: str, secret_id: str):
+    """Delete a secret and all its versions."""
     name = f"projects/{project}/secrets/{secret_id}"
     store = _store()
     if not store.exists("secrets", name):
@@ -154,6 +160,7 @@ async def delete_secret(project: str, secret_id: str):
 
 @app.post("/v1/projects/{project}/secrets/{secret_id}:addVersion")
 async def add_version(project: str, secret_id: str, body: AddVersionRequest):
+    """Add a new version to a secret with base64-encoded payload data."""
     secret_name = f"projects/{project}/secrets/{secret_id}"
     store = _store()
     if not store.exists("secrets", secret_name):
@@ -177,6 +184,7 @@ async def list_versions(
     pageToken: str = Query(default=""),
     filter: str = Query(default=""),
 ):
+    """List versions of a secret, optionally filtered by state."""
     secret_name = f"projects/{project}/secrets/{secret_id}"
     store = _store()
     if not store.exists("secrets", secret_name):
@@ -205,6 +213,7 @@ async def list_versions(
 
 @app.get("/v1/projects/{project}/secrets/{secret_id}/versions/{version_id}")
 async def get_version(project: str, secret_id: str, version_id: str):
+    """Get metadata for a specific secret version."""
     secret_name = f"projects/{project}/secrets/{secret_id}"
     store = _store()
     version_key = _resolve_version(secret_name, version_id)
@@ -215,6 +224,7 @@ async def get_version(project: str, secret_id: str, version_id: str):
 
 @app.post("/v1/projects/{project}/secrets/{secret_id}/versions/{version_id}:access")
 async def access_version(project: str, secret_id: str, version_id: str):
+    """Access (decrypt) the payload of a secret version."""
     secret_name = f"projects/{project}/secrets/{secret_id}"
     store = _store()
     version_key = _resolve_version(secret_name, version_id)
@@ -234,16 +244,19 @@ async def access_version(project: str, secret_id: str, version_id: str):
 
 @app.post("/v1/projects/{project}/secrets/{secret_id}/versions/{version_id}:disable")
 async def disable_version(project: str, secret_id: str, version_id: str):
+    """Disable a secret version, preventing access to its payload."""
     return _set_version_state(project, secret_id, version_id, SecretVersionState.DISABLED)
 
 
 @app.post("/v1/projects/{project}/secrets/{secret_id}/versions/{version_id}:enable")
 async def enable_version(project: str, secret_id: str, version_id: str):
+    """Re-enable a disabled secret version."""
     return _set_version_state(project, secret_id, version_id, SecretVersionState.ENABLED)
 
 
 @app.post("/v1/projects/{project}/secrets/{secret_id}/versions/{version_id}:destroy")
 async def destroy_version(project: str, secret_id: str, version_id: str):
+    """Destroy a secret version, wiping its payload permanently."""
     result = _set_version_state(project, secret_id, version_id, SecretVersionState.DESTROYED)
     # Wipe payload
     secret_name = f"projects/{project}/secrets/{secret_id}"
@@ -254,6 +267,7 @@ async def destroy_version(project: str, secret_id: str, version_id: str):
 
 
 def _set_version_state(project: str, secret_id: str, version_id: str, state: str):
+    """Set the state of a secret version and persist the change."""
     secret_name = f"projects/{project}/secrets/{secret_id}"
     store = _store()
     version_key = _resolve_version(secret_name, version_id)

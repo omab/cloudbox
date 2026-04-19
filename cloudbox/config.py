@@ -1,9 +1,13 @@
+"""Cloudbox configuration loaded from environment variables."""
+
 import os
 from dataclasses import dataclass, field
 
 
 @dataclass
 class Settings:
+    """Runtime configuration for Cloudbox, populated from environment variables."""
+
     default_project: str = field(
         default_factory=lambda: os.environ.get("CLOUDBOX_PROJECT", "local-project")
     )

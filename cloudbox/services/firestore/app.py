@@ -77,12 +77,14 @@ def _parse_path(full_path: str) -> tuple[str, str, str, list[str]]:
 
 @app.post("/v1/projects/{project}/databases/{database}/documents:runQuery")
 async def run_query_root(project: str, database: str, body: RunQueryRequest):
+    """Run a structured query against the root documents collection."""
     parent = f"projects/{project}/databases/{database}/documents"
     return await _run_query_impl(parent, body)
 
 
 @app.post("/v1/{parent_path:path}/documents:runQuery")
 async def run_query_nested(parent_path: str, body: RunQueryRequest):
+    """Run a structured query against a nested collection parent."""
     # parent_path = "projects/P/databases/D/documents/col/doc"
     parent = f"{parent_path}/documents"
     return await _run_query_impl(parent, body)
@@ -124,12 +126,14 @@ async def _run_query_impl(parent: str, body: RunQueryRequest):
 
 @app.post("/v1/projects/{project}/databases/{database}/documents:runAggregationQuery")
 async def run_aggregation_query_root(project: str, database: str, body: RunAggregationQueryRequest):
+    """Run an aggregation query (e.g. COUNT) against the root documents collection."""
     parent = f"projects/{project}/databases/{database}/documents"
     return await _run_aggregation_query_impl(parent, body)
 
 
 @app.post("/v1/{parent_path:path}/documents:runAggregationQuery")
 async def run_aggregation_query_nested(parent_path: str, body: RunAggregationQueryRequest):
+    """Run an aggregation query against a nested collection parent."""
     parent = f"{parent_path}/documents"
     return await _run_aggregation_query_impl(parent, body)
 
@@ -228,6 +232,7 @@ async def _run_aggregation_query_impl(parent: str, body: RunAggregationQueryRequ
 
 @app.post("/v1/projects/{project}/databases/{database}/documents:batchGet")
 async def batch_get(project: str, database: str, body: BatchGetRequest):
+    """Batch-fetch multiple documents by full resource name."""
     store = _store()
     now = _now()
     results = []
@@ -242,6 +247,7 @@ async def batch_get(project: str, database: str, body: BatchGetRequest):
 
 @app.post("/v1/projects/{project}/databases/{database}:beginTransaction")
 async def begin_transaction(project: str, database: str):
+    """Begin a Firestore transaction and return a transaction ID."""
     import base64
 
     txn_id = uuid.uuid4().bytes
@@ -381,6 +387,7 @@ def _apply_write(store, write: Write, now: str) -> dict:
 
 @app.post("/v1/projects/{project}/databases/{database}:commit")
 async def commit(project: str, database: str, body: CommitRequest):
+    """Commit a batch of writes atomically."""
     store = _store()
     now = _now()
     write_results = [_apply_write(store, w, now) for w in body.writes]
@@ -412,6 +419,7 @@ async def batch_write(project: str, database: str, body: BatchWriteRequest):
 
 @app.post("/v1/projects/{project}/databases/{database}:rollback")
 async def rollback(project: str, database: str):
+    """Roll back a transaction (no-op in emulator, transactions are not tracked)."""
     return {}
 
 
@@ -510,6 +518,7 @@ async def get_or_list(
 
 @app.patch("/v1/projects/{project}/databases/{database}/documents/{doc_path:path}")
 async def update_document(project: str, database: str, doc_path: str, request: Request):
+    """Update or create a document at an explicit path (upsert semantics)."""
     doc_root = f"projects/{project}/databases/{database}/documents"
     name = f"{doc_root}/{doc_path}"
     body = await request.json()
@@ -535,6 +544,7 @@ async def update_document(project: str, database: str, doc_path: str, request: R
     "/v1/projects/{project}/databases/{database}/documents/{doc_path:path}", status_code=204
 )
 async def delete_document(project: str, database: str, doc_path: str):
+    """Delete a Firestore document by path."""
     doc_root = f"projects/{project}/databases/{database}/documents"
     name = f"{doc_root}/{doc_path}"
     store = _store()

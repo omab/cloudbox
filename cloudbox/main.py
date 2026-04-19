@@ -153,6 +153,7 @@ async def _serve_all(configs: list[tuple[str, uvicorn.Config]]) -> None:
 
 
 def main() -> None:
+    """Entry point: configure logging and start all Cloudbox services concurrently."""
     log_level = os.environ.get("CLOUDBOX_LOG_LEVEL", "INFO").upper()
     logging.basicConfig(
         level=getattr(logging, log_level, logging.INFO),

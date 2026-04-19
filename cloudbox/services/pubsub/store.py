@@ -56,10 +56,20 @@ _topic_log: dict[str, list[dict]] = {}  # topic → retained messages (for seek)
 
 
 def get_store() -> NamespacedStore:
+    """Return the shared Pub/Sub store instance.
+
+    Returns:
+        The module-level ``NamespacedStore`` used by all Pub/Sub route handlers.
+    """
     return _store
 
 
 def ensure_queue(sub_name: str) -> None:
+    """Initialize the in-memory queue structures for a subscription if not present.
+
+    Args:
+        sub_name: Full subscription resource name.
+    """
     with _lock:
         _queues.setdefault(sub_name, deque())
         _unacked.setdefault(sub_name, {})
@@ -67,6 +77,11 @@ def ensure_queue(sub_name: str) -> None:
 
 
 def remove_queue(sub_name: str) -> None:
+    """Remove all in-memory queue state for a subscription.
+
+    Args:
+        sub_name: Full subscription resource name.
+    """
     with _lock:
         _queues.pop(sub_name, None)
         _unacked.pop(sub_name, None)
@@ -142,6 +157,12 @@ def pull(sub_name: str, max_messages: int) -> list[tuple[str, dict, int]]:
 
 
 def acknowledge(sub_name: str, ack_ids: list[str]) -> None:
+    """Acknowledge messages, removing them from the unacked map.
+
+    Args:
+        sub_name: Full subscription resource name.
+        ack_ids: List of ack IDs to acknowledge.
+    """
     with _lock:
         unacked = _unacked.get(sub_name, {})
         inflight = _inflight_keys.get(sub_name, set())
@@ -156,6 +177,13 @@ def acknowledge(sub_name: str, ack_ids: list[str]) -> None:
 
 
 def modify_ack_deadline(sub_name: str, ack_ids: list[str], deadline_secs: int) -> None:
+    """Extend the ack deadline for a set of messages.
+
+    Args:
+        sub_name: Full subscription resource name.
+        ack_ids: List of ack IDs whose deadlines should be extended.
+        deadline_secs: New deadline in seconds from now.
+    """
     with _lock:
         unacked = _unacked.get(sub_name, {})
         new_deadline = time.monotonic() + deadline_secs
@@ -165,16 +193,40 @@ def modify_ack_deadline(sub_name: str, ack_ids: list[str], deadline_secs: int) -
 
 
 def queue_depth(sub_name: str) -> int:
+    """Return the number of pending (not yet pulled) messages.
+
+    Args:
+        sub_name: Full subscription resource name.
+
+    Returns:
+        Count of messages waiting in the queue.
+    """
     with _lock:
         return len(_queues.get(sub_name, []))
 
 
 def unacked_count(sub_name: str) -> int:
+    """Return the number of in-flight (pulled but not yet acked) messages.
+
+    Args:
+        sub_name: Full subscription resource name.
+
+    Returns:
+        Count of unacknowledged messages.
+    """
     with _lock:
         return len(_unacked.get(sub_name, {}))
 
 
 def retained_count(topic_name: str) -> int:
+    """Return the number of messages retained in the topic log.
+
+    Args:
+        topic_name: Full topic resource name.
+
+    Returns:
+        Count of retained messages.
+    """
     with _lock:
         return len(_topic_log.get(topic_name, []))
 

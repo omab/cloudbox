@@ -7,4 +7,9 @@ _store = NamespacedStore("scheduler", settings.data_dir)
 
 
 def get_store() -> NamespacedStore:
+    """Return the shared Cloud Scheduler store instance.
+
+    Returns:
+        The module-level ``NamespacedStore`` used by all Scheduler route handlers.
+    """
     return _store

@@ -39,6 +39,14 @@ class GCPError(HTTPException):
     """Raise this from route handlers to return a GCP-format error."""
 
     def __init__(self, http_status: int, message: str, status: str | None = None):
+        """Initialize GCPError.
+
+        Args:
+            http_status: HTTP status code (e.g. 404, 409).
+            message: Human-readable error message included in the GCP error body.
+            status: GCP status string (e.g. ``"NOT_FOUND"``).  Derived from
+                ``http_status`` when omitted.
+        """
         super().__init__(status_code=http_status, detail=message)
         self.gcp_status = status or _STATUS_MAP.get(http_status, "UNKNOWN")
         self.message = message

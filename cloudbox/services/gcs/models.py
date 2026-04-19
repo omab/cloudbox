@@ -18,11 +18,15 @@ def _now_rfc3339() -> str:
 
 
 class LifecycleAction(BaseModel):
+    """Action to take when a lifecycle rule condition is met."""
+
     type: str  # "Delete" or "SetStorageClass"
     storageClass: str = ""  # used when type == "SetStorageClass"
 
 
 class LifecycleCondition(BaseModel):
+    """Condition that triggers a lifecycle rule action."""
+
     age: int | None = None  # days since object creation
     createdBefore: str = ""  # RFC3339 date; object must have been created before this
     matchesStorageClass: list[str] = Field(default_factory=list)
@@ -30,11 +34,15 @@ class LifecycleCondition(BaseModel):
 
 
 class LifecycleRule(BaseModel):
+    """A single bucket lifecycle rule (condition + action pair)."""
+
     action: LifecycleAction
     condition: LifecycleCondition = Field(default_factory=LifecycleCondition)
 
 
 class Lifecycle(BaseModel):
+    """Lifecycle configuration for a GCS bucket."""
+
     rule: list[LifecycleRule] = Field(default_factory=list)
 
 
@@ -44,12 +52,16 @@ class Lifecycle(BaseModel):
 
 
 class RetentionPolicy(BaseModel):
+    """Object retention policy for a GCS bucket."""
+
     retentionPeriod: str = "0"  # seconds, as a string
     effectiveTime: str = Field(default_factory=_now_rfc3339)
     isLocked: bool = False
 
 
 class BucketModel(BaseModel):
+    """A GCS bucket resource."""
+
     kind: str = "storage#bucket"
     id: str = ""
     name: str
@@ -68,6 +80,7 @@ class BucketModel(BaseModel):
     retentionPolicy: RetentionPolicy | None = None
 
     def model_post_init(self, __context: Any) -> None:
+        """Populate derived fields after construction."""
         if not self.id:
             self.id = self.name
         if not self.selfLink:
@@ -75,6 +88,8 @@ class BucketModel(BaseModel):
 
 
 class ObjectModel(BaseModel):
+    """A GCS object resource."""
+
     kind: str = "storage#object"
     id: str = ""
     name: str
@@ -95,6 +110,7 @@ class ObjectModel(BaseModel):
     retentionExpirationTime: str = ""
 
     def model_post_init(self, __context: Any) -> None:
+        """Populate derived fields after construction."""
         if not self.id:
             self.id = f"{self.bucket}/{self.name}/1"
         if not self.selfLink:
@@ -111,12 +127,16 @@ class ObjectModel(BaseModel):
 
 
 class BucketListResponse(BaseModel):
+    """Response body for listing GCS buckets."""
+
     kind: str = "storage#buckets"
     items: list[BucketModel] = Field(default_factory=list)
     nextPageToken: str | None = None
 
 
 class ObjectListResponse(BaseModel):
+    """Response body for listing GCS objects."""
+
     kind: str = "storage#objects"
     items: list[ObjectModel] = Field(default_factory=list)
     nextPageToken: str | None = None
@@ -133,6 +153,8 @@ _ALL_EVENT_TYPES = {
 
 
 class NotificationConfig(BaseModel):
+    """A GCS bucket notification configuration resource."""
+
     kind: str = "storage#notification"
     id: str = ""
     selfLink: str = ""
@@ -144,6 +166,7 @@ class NotificationConfig(BaseModel):
     etag: str = "CAE="
 
     def model_post_init(self, __context: Any) -> None:
+        """Populate derived fields after construction."""
         if not self.selfLink and self.id:
             # Derive selfLink from topic → bucket is embedded by the caller
             pass
@@ -167,5 +190,7 @@ class NotificationConfig(BaseModel):
 
 
 class NotificationListResponse(BaseModel):
+    """Response body for listing GCS bucket notifications."""
+
     kind: str = "storage#notifications"
     items: list[NotificationConfig] = Field(default_factory=list)

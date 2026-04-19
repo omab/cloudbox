@@ -12,11 +12,10 @@ import base64
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, Response
-from fastapi.responses import JSONResponse
 
 from cloudbox.core.errors import GCPError, add_gcp_exception_handler
 from cloudbox.core.middleware import add_request_logging
@@ -29,9 +28,9 @@ from cloudbox.services.pubsub.models import (
     ModifyAckDeadlineRequest,
     PublishRequest,
     PublishResponse,
+    PubsubMessage,
     PullRequest,
     PullResponse,
-    PubsubMessage,
     ReceivedMessage,
     SchemaListResponse,
     SchemaModel,
@@ -56,7 +55,7 @@ logger = logging.getLogger("cloudbox.pubsub")
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 async def _dispatch_push(push_endpoint: str, sub_name: str, ack_id: str, message: dict) -> None:
@@ -143,8 +142,9 @@ async def _write_to_bigquery(sub_data: dict, msg: dict) -> None:
 async def _write_to_gcs(sub_data: dict, msg: dict) -> None:
     """Write a Pub/Sub message as a Cloud Storage object."""
     import hashlib
-    from cloudbox.services.gcs.store import get_store as get_gcs_store
+
     from cloudbox.services.gcs.models import ObjectModel
+    from cloudbox.services.gcs.store import get_store as get_gcs_store
 
     gcs_cfg = sub_data.get("cloudStorageConfig") or {}
     bucket = gcs_cfg.get("bucket", "")
@@ -214,6 +214,7 @@ async def _write_to_gcs(sub_data: dict, msg: dict) -> None:
 
 @app.put("/v1/projects/{project}/topics/{topic_id}")
 async def create_topic(project: str, topic_id: str, body: CreateTopicBody | None = None):
+    """Create a Pub/Sub topic, or return the existing one if it already exists."""
     full_name = f"projects/{project}/topics/{topic_id}"
     store = ps_store.get_store()
     existing = store.get("topics", full_name)
@@ -234,6 +235,7 @@ async def create_topic(project: str, topic_id: str, body: CreateTopicBody | None
 
 @app.patch("/v1/projects/{project}/topics/{topic_id}")
 async def update_topic(project: str, topic_id: str, body: CreateTopicBody | None = None):
+    """Update a Pub/Sub topic's labels, schema settings, or retention duration."""
     full_name = f"projects/{project}/topics/{topic_id}"
     store = ps_store.get_store()
     data = store.get("topics", full_name)
@@ -255,6 +257,7 @@ async def update_topic(project: str, topic_id: str, body: CreateTopicBody | None
 
 @app.get("/v1/projects/{project}/topics/{topic_id}")
 async def get_topic(project: str, topic_id: str):
+    """Get a Pub/Sub topic by ID."""
     full_name = f"projects/{project}/topics/{topic_id}"
     store = ps_store.get_store()
     data = store.get("topics", full_name)
@@ -265,6 +268,7 @@ async def get_topic(project: str, topic_id: str):
 
 @app.get("/v1/projects/{project}/topics")
 async def list_topics(project: str, pageSize: int = 100, pageToken: str = ""):
+    """List all Pub/Sub topics in a project with optional pagination."""
     store = ps_store.get_store()
     prefix = f"projects/{project}/topics/"
     items = [
@@ -280,6 +284,7 @@ async def list_topics(project: str, pageSize: int = 100, pageToken: str = ""):
 
 @app.delete("/v1/projects/{project}/topics/{topic_id}", status_code=204)
 async def delete_topic(project: str, topic_id: str):
+    """Delete a Pub/Sub topic and remove all associated subscriptions."""
     full_name = f"projects/{project}/topics/{topic_id}"
     store = ps_store.get_store()
     if not store.delete("topics", full_name):
@@ -296,6 +301,7 @@ async def delete_topic(project: str, topic_id: str):
 async def publish(
     project: str, topic_id: str, body: PublishRequest, background_tasks: BackgroundTasks
 ):
+    """Publish messages to a topic, fanning out to all subscriptions."""
     full_name = f"projects/{project}/topics/{topic_id}"
     store = ps_store.get_store()
     if not store.exists("topics", full_name):
@@ -315,7 +321,7 @@ async def publish(
                 raw_data = raw_msg.get("data", "")
                 try:
                     msg_bytes = base64.b64decode(raw_data) if raw_data else b""
-                except Exception:
+                except Exception as e:
                     raise GCPError(400, "Message data is not valid base64") from e
                 err = validate_message_against_schema(schema_type, definition, msg_bytes, encoding)
                 if err:
@@ -373,6 +379,7 @@ async def publish(
 
 @app.put("/v1/projects/{project}/subscriptions/{sub_id}")
 async def create_subscription(project: str, sub_id: str, body: SubscriptionModel):
+    """Create a Pub/Sub subscription for an existing topic."""
     full_name = f"projects/{project}/subscriptions/{sub_id}"
     store = ps_store.get_store()
     existing = store.get("subscriptions", full_name)
@@ -401,6 +408,7 @@ async def create_subscription(project: str, sub_id: str, body: SubscriptionModel
 
 @app.get("/v1/projects/{project}/subscriptions/{sub_id}")
 async def get_subscription(project: str, sub_id: str):
+    """Get a Pub/Sub subscription by ID."""
     full_name = f"projects/{project}/subscriptions/{sub_id}"
     store = ps_store.get_store()
     data = store.get("subscriptions", full_name)
@@ -411,6 +419,7 @@ async def get_subscription(project: str, sub_id: str):
 
 @app.get("/v1/projects/{project}/subscriptions")
 async def list_subscriptions(project: str, pageSize: int = 100, pageToken: str = ""):
+    """List all subscriptions in a project with optional pagination."""
     store = ps_store.get_store()
     prefix = f"projects/{project}/subscriptions/"
     items = [
@@ -426,6 +435,7 @@ async def list_subscriptions(project: str, pageSize: int = 100, pageToken: str =
 
 @app.delete("/v1/projects/{project}/subscriptions/{sub_id}", status_code=204)
 async def delete_subscription(project: str, sub_id: str):
+    """Delete a Pub/Sub subscription and its message queue."""
     full_name = f"projects/{project}/subscriptions/{sub_id}"
     store = ps_store.get_store()
     if not store.delete("subscriptions", full_name):
@@ -436,6 +446,7 @@ async def delete_subscription(project: str, sub_id: str):
 
 @app.post("/v1/projects/{project}/subscriptions/{sub_id}:pull")
 async def pull_messages(project: str, sub_id: str, body: PullRequest):
+    """Pull up to maxMessages from a pull subscription's queue."""
     full_name = f"projects/{project}/subscriptions/{sub_id}"
     store = ps_store.get_store()
     sub_data = store.get("subscriptions", full_name)
@@ -465,6 +476,7 @@ async def pull_messages(project: str, sub_id: str, body: PullRequest):
 
 @app.post("/v1/projects/{project}/subscriptions/{sub_id}:acknowledge")
 async def acknowledge(project: str, sub_id: str, body: AcknowledgeRequest):
+    """Acknowledge receipt of messages, removing them from the subscription queue."""
     full_name = f"projects/{project}/subscriptions/{sub_id}"
     store = ps_store.get_store()
     if not store.exists("subscriptions", full_name):
@@ -475,6 +487,7 @@ async def acknowledge(project: str, sub_id: str, body: AcknowledgeRequest):
 
 @app.post("/v1/projects/{project}/subscriptions/{sub_id}:modifyAckDeadline")
 async def modify_ack_deadline(project: str, sub_id: str, body: ModifyAckDeadlineRequest):
+    """Extend or reduce the ack deadline for a set of messages."""
     full_name = f"projects/{project}/subscriptions/{sub_id}"
     store = ps_store.get_store()
     if not store.exists("subscriptions", full_name):
@@ -485,6 +498,7 @@ async def modify_ack_deadline(project: str, sub_id: str, body: ModifyAckDeadline
 
 @app.post("/v1/projects/{project}/subscriptions/{sub_id}:seek")
 async def seek(project: str, sub_id: str, body: SeekRequest):
+    """Reset a subscription's position to a snapshot or timestamp."""
     full_name = f"projects/{project}/subscriptions/{sub_id}"
     store = ps_store.get_store()
     sub_data = store.get("subscriptions", full_name)
@@ -514,6 +528,7 @@ async def seek(project: str, sub_id: str, body: SeekRequest):
 
 @app.put("/v1/projects/{project}/snapshots/{snap_id}")
 async def create_snapshot(project: str, snap_id: str, body: CreateSnapshotRequest):
+    """Create a snapshot of a subscription's current state."""
     snap_name = f"projects/{project}/snapshots/{snap_id}"
     store = ps_store.get_store()
     if not store.exists("subscriptions", body.subscription):
@@ -529,6 +544,7 @@ async def create_snapshot(project: str, snap_id: str, body: CreateSnapshotReques
 
 @app.get("/v1/projects/{project}/snapshots/{snap_id}")
 async def get_snapshot(project: str, snap_id: str):
+    """Get a Pub/Sub snapshot by ID."""
     snap_name = f"projects/{project}/snapshots/{snap_id}"
     store = ps_store.get_store()
     data = store.get("snapshots", snap_name)
@@ -539,6 +555,7 @@ async def get_snapshot(project: str, snap_id: str):
 
 @app.get("/v1/projects/{project}/snapshots")
 async def list_snapshots(project: str, pageSize: int = 100, pageToken: str = ""):
+    """List all snapshots in a project with optional pagination."""
     store = ps_store.get_store()
     prefix = f"projects/{project}/snapshots/"
     items = [SnapshotModel(**v) for v in store.list("snapshots") if v["name"].startswith(prefix)]
@@ -552,6 +569,7 @@ async def list_snapshots(project: str, pageSize: int = 100, pageToken: str = "")
 
 @app.patch("/v1/projects/{project}/snapshots/{snap_id}")
 async def update_snapshot(project: str, snap_id: str, body: SnapshotModel):
+    """Update a snapshot's labels or expiry time."""
     snap_name = f"projects/{project}/snapshots/{snap_id}"
     store = ps_store.get_store()
     data = store.get("snapshots", snap_name)
@@ -567,6 +585,7 @@ async def update_snapshot(project: str, snap_id: str, body: SnapshotModel):
 
 @app.delete("/v1/projects/{project}/snapshots/{snap_id}", status_code=204)
 async def delete_snapshot(project: str, snap_id: str):
+    """Delete a Pub/Sub snapshot."""
     snap_name = f"projects/{project}/snapshots/{snap_id}"
     store = ps_store.get_store()
     if not store.delete("snapshots", snap_name):
@@ -581,6 +600,7 @@ async def delete_snapshot(project: str, snap_id: str):
 
 @app.post("/v1/projects/{project}/schemas")
 async def create_schema(project: str, body: SchemaModel, schemaId: str = ""):
+    """Create a Pub/Sub schema (Avro or Protocol Buffer) for message validation."""
     store = ps_store.get_store()
     schema_id = schemaId or body.name.split("/")[-1] if body.name else ""
     if not schema_id:
@@ -605,6 +625,7 @@ async def create_schema(project: str, body: SchemaModel, schemaId: str = ""):
 
 @app.get("/v1/projects/{project}/schemas/{schema_id}")
 async def get_schema(project: str, schema_id: str):
+    """Get a Pub/Sub schema by ID."""
     full_name = f"projects/{project}/schemas/{schema_id}"
     store = ps_store.get_store()
     data = store.get("schemas", full_name)
@@ -615,6 +636,7 @@ async def get_schema(project: str, schema_id: str):
 
 @app.get("/v1/projects/{project}/schemas")
 async def list_schemas(project: str, pageSize: int = 100, pageToken: str = ""):
+    """List all schemas in a project with optional pagination."""
     store = ps_store.get_store()
     prefix = f"projects/{project}/schemas/"
     items = [SchemaModel(**v) for v in store.list("schemas") if v["name"].startswith(prefix)]
@@ -626,6 +648,7 @@ async def list_schemas(project: str, pageSize: int = 100, pageToken: str = ""):
 
 @app.delete("/v1/projects/{project}/schemas/{schema_id}", status_code=204)
 async def delete_schema(project: str, schema_id: str):
+    """Delete a Pub/Sub schema."""
     full_name = f"projects/{project}/schemas/{schema_id}"
     store = ps_store.get_store()
     if not store.delete("schemas", full_name):
@@ -635,6 +658,7 @@ async def delete_schema(project: str, schema_id: str):
 
 @app.post("/v1/projects/{project}/schemas:validate")
 async def validate_schema_endpoint(project: str, body: ValidateSchemaRequest):
+    """Validate a schema definition without storing it."""
     err = validate_schema_definition(body.schema_.type, body.schema_.definition)
     if err:
         raise GCPError(400, f"Invalid schema: {err}")
@@ -643,6 +667,7 @@ async def validate_schema_endpoint(project: str, body: ValidateSchemaRequest):
 
 @app.post("/v1/projects/{project}/schemas:validateMessage")
 async def validate_message_endpoint(project: str, body: ValidateMessageRequest):
+    """Validate a message against a schema definition or stored schema."""
     store = ps_store.get_store()
 
     # Resolve schema: inline or by resource name
@@ -660,7 +685,7 @@ async def validate_message_endpoint(project: str, body: ValidateMessageRequest):
 
     try:
         msg_bytes = base64.b64decode(body.message) if body.message else b""
-    except Exception:
+    except Exception as e:
         raise GCPError(400, "message is not valid base64") from e
 
     err = validate_message_against_schema(schema_type, definition, msg_bytes, body.encoding)

@@ -24,6 +24,8 @@ class FirestoreValue(BaseModel):
 
 
 class Document(BaseModel):
+    """A Firestore document resource."""
+
     name: str = ""
     fields: dict[str, Any] = Field(default_factory=dict)
     createTime: str = ""
@@ -31,10 +33,14 @@ class Document(BaseModel):
 
 
 class DocumentMask(BaseModel):
+    """A set of field paths that limit which fields are returned or updated."""
+
     fieldPaths: list[str] = Field(default_factory=list)
 
 
 class FieldTransform(BaseModel):
+    """A transformation to apply to a single document field."""
+
     fieldPath: str
     setToServerValue: str | None = None
     increment: dict | None = None  # FirestoreValue
@@ -43,6 +49,8 @@ class FieldTransform(BaseModel):
 
 
 class Write(BaseModel):
+    """A single write operation within a commit or batch write."""
+
     update: Document | None = None
     delete: str | None = None
     currentDocument: dict | None = None
@@ -51,26 +59,36 @@ class Write(BaseModel):
 
 
 class CommitRequest(BaseModel):
+    """Request body for a Firestore commit (transactional writes)."""
+
     writes: list[Write] = Field(default_factory=list)
     transaction: str | None = None
 
 
 class CommitResponse(BaseModel):
+    """Response body for a Firestore commit."""
+
     writeResults: list[dict] = Field(default_factory=list)
     commitTime: str = ""
 
 
 class BatchWriteRequest(BaseModel):
+    """Request body for a Firestore batch write (non-transactional)."""
+
     writes: list[Write] = Field(default_factory=list)
     labels: dict = Field(default_factory=dict)
 
 
 class BatchWriteResponse(BaseModel):
+    """Response body for a Firestore batch write."""
+
     writeResults: list[dict] = Field(default_factory=list)
     status: list[dict] = Field(default_factory=list)
 
 
 class StructuredQuery(BaseModel):
+    """A Firestore structured query."""
+
     select: dict | None = None
     from_: list[dict] | None = Field(default=None, alias="from")
     where: dict | None = None
@@ -84,6 +102,8 @@ class StructuredQuery(BaseModel):
 
 
 class RunQueryRequest(BaseModel):
+    """Request body for running a Firestore structured query."""
+
     structuredQuery: StructuredQuery | None = None
     transaction: str | None = None
     newTransaction: dict | None = None
@@ -91,11 +111,15 @@ class RunQueryRequest(BaseModel):
 
 
 class AggregationConfig(BaseModel):
+    """Configuration for a Firestore aggregation query."""
+
     structuredQuery: StructuredQuery | None = None
     aggregations: list[dict] = Field(default_factory=list)
 
 
 class RunAggregationQueryRequest(BaseModel):
+    """Request body for running a Firestore aggregation query."""
+
     structuredAggregationQuery: AggregationConfig | None = None
     transaction: str | None = None
     newTransaction: dict | None = None
@@ -103,11 +127,15 @@ class RunAggregationQueryRequest(BaseModel):
 
 
 class BatchGetRequest(BaseModel):
+    """Request body for batch-getting multiple Firestore documents."""
+
     documents: list[str]
     mask: DocumentMask | None = None
     transaction: str | None = None
 
 
 class ListDocumentsResponse(BaseModel):
+    """Response body for listing Firestore documents."""
+
     documents: list[Document] = Field(default_factory=list)
     nextPageToken: str | None = None

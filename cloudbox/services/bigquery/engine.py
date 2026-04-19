@@ -271,6 +271,7 @@ class BigQueryEngine:
     """Single DuckDB connection backing the BigQuery emulator."""
 
     def __init__(self) -> None:
+        """Initialize the engine with an in-memory or file-backed DuckDB connection."""
         if settings.data_dir:
             self._db_path = str(Path(settings.data_dir) / "bigquery.duckdb")
         else:
@@ -318,6 +319,7 @@ class BigQueryEngine:
     # ------------------------------------------------------------------
 
     def create_dataset(self, project: str, dataset_id: str, body: dict) -> dict:
+        """Create a new dataset and its DuckDB schema."""
         key = f"{project}.{dataset_id}"
         if key in self._datasets:
             raise ValueError(f"Already exists: dataset {dataset_id}")
@@ -337,13 +339,16 @@ class BigQueryEngine:
         return meta
 
     def get_dataset(self, project: str, dataset_id: str) -> dict | None:
+        """Return dataset metadata or None if not found."""
         return self._datasets.get(f"{project}.{dataset_id}")
 
     def list_datasets(self, project: str) -> list[dict]:
+        """Return all dataset metadata dicts for the given project."""
         prefix = f"{project}."
         return [v for k, v in self._datasets.items() if k.startswith(prefix)]
 
     def delete_dataset(self, project: str, dataset_id: str, delete_contents: bool = False) -> bool:
+        """Delete a dataset and optionally all its tables; return False if not found."""
         key = f"{project}.{dataset_id}"
         if key not in self._datasets:
             return False
@@ -366,6 +371,7 @@ class BigQueryEngine:
     # ------------------------------------------------------------------
 
     def create_table(self, project: str, dataset_id: str, table_id: str, body: dict) -> dict:
+        """Create a new table with the given schema in DuckDB."""
         ds_key = f"{project}.{dataset_id}"
         if ds_key not in self._datasets:
             raise ValueError(f"Dataset not found: {dataset_id}")
@@ -404,6 +410,7 @@ class BigQueryEngine:
         return meta
 
     def update_table(self, project: str, dataset_id: str, table_id: str, body: dict) -> dict:
+        """Add new columns and update metadata for an existing table."""
         tbl_key = f"{project}.{dataset_id}.{table_id}"
         meta = self._tables.get(tbl_key)
         if meta is None:
@@ -431,13 +438,16 @@ class BigQueryEngine:
         return meta
 
     def get_table(self, project: str, dataset_id: str, table_id: str) -> dict | None:
+        """Return table metadata or None if not found."""
         return self._tables.get(f"{project}.{dataset_id}.{table_id}")
 
     def list_tables(self, project: str, dataset_id: str) -> list[dict]:
+        """Return all table metadata dicts in the given dataset."""
         prefix = f"{project}.{dataset_id}."
         return [v for k, v in self._tables.items() if k.startswith(prefix)]
 
     def delete_table(self, project: str, dataset_id: str, table_id: str) -> bool:
+        """Drop a table or view from DuckDB; return False if not found."""
         key = f"{project}.{dataset_id}.{table_id}"
         if key not in self._tables:
             return False
@@ -450,6 +460,7 @@ class BigQueryEngine:
         return True
 
     def create_view(self, project: str, dataset_id: str, table_id: str, body: dict) -> dict:
+        """Create a DuckDB view from a BigQuery view definition."""
         ds_key = f"{project}.{dataset_id}"
         if ds_key not in self._datasets:
             raise ValueError(f"Dataset not found: {dataset_id}")
@@ -487,6 +498,7 @@ class BigQueryEngine:
         return meta
 
     def update_view(self, project: str, dataset_id: str, table_id: str, body: dict) -> dict:
+        """Replace a DuckDB view's query and update its metadata."""
         tbl_key = f"{project}.{dataset_id}.{table_id}"
         meta = self._tables.get(tbl_key)
         if meta is None:
@@ -523,6 +535,7 @@ class BigQueryEngine:
         query_parameters: list | None = None,
         parameter_mode: str = "NONE",
     ) -> dict:
+        """Execute a SQL query against DuckDB and store the resulting job record."""
         rewritten = _rewrite_sql(query, project)
         if query_parameters:
             rewritten, duck_params = _apply_query_params(
@@ -611,9 +624,11 @@ class BigQueryEngine:
         return job
 
     def get_job(self, project: str, job_id: str) -> dict | None:
+        """Return job metadata or None if not found."""
         return self._jobs.get(f"{project}.{job_id}")
 
     def get_query_results(self, project: str, job_id: str) -> dict | None:
+        """Return paged query results for a completed job, or None if not found."""
         job = self._jobs.get(f"{project}.{job_id}")
         if job is None:
             return None
@@ -686,6 +701,7 @@ class BigQueryEngine:
         max_results: int = 1000,
         page_token: str = "",
     ) -> dict:
+        """Read a page of rows from a table via tabledata.list."""
         tbl_key = f"{project}.{dataset_id}.{table_id}"
         if tbl_key not in self._tables:
             raise ValueError(f"Table not found: {table_id}")
@@ -715,4 +731,5 @@ _engine = BigQueryEngine()
 
 
 def get_engine() -> BigQueryEngine:
+    """Return the module-level BigQueryEngine singleton."""
     return _engine

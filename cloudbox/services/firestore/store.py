@@ -13,4 +13,9 @@ _store = NamespacedStore("firestore", settings.data_dir)
 
 
 def get_store() -> NamespacedStore:
+    """Return the shared Firestore store instance.
+
+    Returns:
+        The module-level ``NamespacedStore`` used by all Firestore route handlers.
+    """
     return _store

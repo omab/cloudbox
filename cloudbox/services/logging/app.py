@@ -59,6 +59,7 @@ def _project_from_resource(resource_name: str) -> str:
 
 
 def _store():
+    """Return the shared Cloud Logging store instance."""
     return get_store()
 
 
@@ -142,6 +143,7 @@ def _matches_filter(entry: dict, filter_str: str) -> bool:
 
 @app.post("/v2/entries:write", status_code=200)
 async def write_log_entries(request: Request):
+    """Batch-write log entries, skipping any that match active exclusions."""
     body = await request.json()
     store = _store()
 
@@ -203,6 +205,7 @@ async def write_log_entries(request: Request):
 
 @app.post("/v2/entries:list", status_code=200)
 async def list_log_entries(request: Request):
+    """List log entries with optional filter, sort, and pagination."""
     body = await request.json()
     store = _store()
 
@@ -247,6 +250,7 @@ async def list_log_entries(request: Request):
 
 @app.get("/v2/projects/{project}/logs", status_code=200)
 async def list_logs(project: str):
+    """List distinct log names for a project."""
     store = _store()
     all_entries = store.list("entries")
     log_names = sorted(
@@ -261,6 +265,7 @@ async def list_logs(project: str):
 
 @app.delete("/v2/projects/{project}/logs/{log_id:path}", status_code=200)
 async def delete_log(project: str, log_id: str):
+    """Delete all entries for a specific log."""
     store = _store()
     log_name = f"projects/{project}/logs/{log_id}"
     # Re-collect keys properly (list() and keys() ordering not guaranteed to align)
@@ -279,6 +284,7 @@ async def delete_log(project: str, log_id: str):
 
 @app.post("/v2/projects/{project}/sinks", status_code=200)
 async def create_sink(project: str, request: Request):
+    """Create a log sink that routes entries to a destination."""
     body = await request.json()
     sink_id = body.get("name", "")
     if not sink_id:
@@ -301,6 +307,7 @@ async def create_sink(project: str, request: Request):
 
 @app.get("/v2/projects/{project}/sinks/{sink_id}", status_code=200)
 async def get_sink(project: str, sink_id: str):
+    """Get a log sink by ID."""
     store = _store()
     key = f"projects/{project}/sinks/{sink_id}"
     sink = store.get("sinks", key)
@@ -311,6 +318,7 @@ async def get_sink(project: str, sink_id: str):
 
 @app.get("/v2/projects/{project}/sinks", status_code=200)
 async def list_sinks(project: str):
+    """List all log sinks for a project."""
     store = _store()
     prefix = f"projects/{project}/sinks/"
     sinks = [store.get("sinks", k) for k in store.keys("sinks") if k.startswith(prefix)]
@@ -319,6 +327,7 @@ async def list_sinks(project: str):
 
 @app.patch("/v2/projects/{project}/sinks/{sink_id}", status_code=200)
 async def update_sink(project: str, sink_id: str, request: Request):
+    """Update a log sink's configuration."""
     store = _store()
     key = f"projects/{project}/sinks/{sink_id}"
     existing = store.get("sinks", key)
@@ -332,6 +341,7 @@ async def update_sink(project: str, sink_id: str, request: Request):
 
 @app.delete("/v2/projects/{project}/sinks/{sink_id}", status_code=200)
 async def delete_sink(project: str, sink_id: str):
+    """Delete a log sink."""
     store = _store()
     key = f"projects/{project}/sinks/{sink_id}"
     found = store.delete("sinks", key)
@@ -347,6 +357,7 @@ async def delete_sink(project: str, sink_id: str):
 
 @app.post("/v2/projects/{project}/metrics", status_code=200)
 async def create_metric(project: str, request: Request):
+    """Create a log-based metric."""
     body = await request.json()
     metric_id = body.get("name", "")
     if not metric_id:
@@ -363,6 +374,7 @@ async def create_metric(project: str, request: Request):
 
 @app.get("/v2/projects/{project}/metrics/{metric_id}", status_code=200)
 async def get_metric(project: str, metric_id: str):
+    """Get a log-based metric by ID."""
     store = _store()
     key = f"projects/{project}/metrics/{metric_id}"
     metric = store.get("metrics", key)
@@ -373,6 +385,7 @@ async def get_metric(project: str, metric_id: str):
 
 @app.get("/v2/projects/{project}/metrics", status_code=200)
 async def list_metrics(project: str):
+    """List all log-based metrics for a project."""
     store = _store()
     prefix = f"projects/{project}/metrics/"
     metrics = [store.get("metrics", k) for k in store.keys("metrics") if k.startswith(prefix)]
@@ -381,6 +394,7 @@ async def list_metrics(project: str):
 
 @app.patch("/v2/projects/{project}/metrics/{metric_id}", status_code=200)
 async def update_metric(project: str, metric_id: str, request: Request):
+    """Update a log-based metric's configuration."""
     store = _store()
     key = f"projects/{project}/metrics/{metric_id}"
     existing = store.get("metrics", key)
@@ -394,6 +408,7 @@ async def update_metric(project: str, metric_id: str, request: Request):
 
 @app.delete("/v2/projects/{project}/metrics/{metric_id}", status_code=200)
 async def delete_metric(project: str, metric_id: str):
+    """Delete a log-based metric."""
     store = _store()
     key = f"projects/{project}/metrics/{metric_id}"
     found = store.delete("metrics", key)
@@ -409,6 +424,7 @@ async def delete_metric(project: str, metric_id: str):
 
 @app.post("/v2/projects/{project}/exclusions", status_code=200)
 async def create_exclusion(project: str, request: Request):
+    """Create a log exclusion that filters out matching entries on write."""
     body = await request.json()
     name = body.get("name", "")
     if not name:
@@ -432,6 +448,7 @@ async def create_exclusion(project: str, request: Request):
 
 @app.get("/v2/projects/{project}/exclusions/{exclusion_id}", status_code=200)
 async def get_exclusion(project: str, exclusion_id: str):
+    """Get a log exclusion by ID."""
     store = _store()
     key = f"projects/{project}/exclusions/{exclusion_id}"
     exc = store.get("exclusions", key)
@@ -442,6 +459,7 @@ async def get_exclusion(project: str, exclusion_id: str):
 
 @app.get("/v2/projects/{project}/exclusions", status_code=200)
 async def list_exclusions(project: str):
+    """List all log exclusions for a project."""
     store = _store()
     prefix = f"projects/{project}/exclusions/"
     exclusions = [
@@ -452,6 +470,7 @@ async def list_exclusions(project: str):
 
 @app.patch("/v2/projects/{project}/exclusions/{exclusion_id}", status_code=200)
 async def update_exclusion(project: str, exclusion_id: str, request: Request):
+    """Update a log exclusion's filter, description, or disabled state."""
     store = _store()
     key = f"projects/{project}/exclusions/{exclusion_id}"
     existing = store.get("exclusions", key)
@@ -468,6 +487,7 @@ async def update_exclusion(project: str, exclusion_id: str, request: Request):
 
 @app.delete("/v2/projects/{project}/exclusions/{exclusion_id}", status_code=200)
 async def delete_exclusion(project: str, exclusion_id: str):
+    """Delete a log exclusion."""
     store = _store()
     key = f"projects/{project}/exclusions/{exclusion_id}"
     if not store.delete("exclusions", key):
@@ -482,6 +502,7 @@ async def delete_exclusion(project: str, exclusion_id: str):
 
 @app.post("/v3/projects/{project}/timeSeries", status_code=200)
 async def write_time_series(project: str, request: Request):
+    """Write Cloud Monitoring time series data points."""
     body = await request.json()
     store = _store()
     time_series_list = body.get("timeSeries", [])
@@ -507,11 +528,13 @@ async def query_time_series(project: str, request: Request):
 
 @app.get("/v3/projects/{project}/metricDescriptors", status_code=200)
 async def list_metric_descriptors(project: str):
+    """List Cloud Monitoring metric descriptors (returns empty list for emulator)."""
     return {"metricDescriptors": []}
 
 
 @app.get("/v3/projects/{project}/monitoredResourceDescriptors", status_code=200)
 async def list_monitored_resource_descriptors(project: str):
+    """List monitored resource descriptors (returns only the global resource type)."""
     return {
         "resourceDescriptors": [
             {

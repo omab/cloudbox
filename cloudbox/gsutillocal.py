@@ -103,6 +103,7 @@ def _upload_file(c, bucket: str, obj_name: str, path: Path) -> None:
 
 
 def cmd_ls(args) -> None:
+    """List buckets or objects at a gs:// URI."""
     with _client() as c:
         if not args.uri:
             data = _check(c.get("/storage/v1/b", params={"project": _PROJECT}))
@@ -133,6 +134,7 @@ def cmd_ls(args) -> None:
 
 
 def cmd_cp(args) -> None:
+    """Copy files between local filesystem and GCS (or between GCS paths)."""
     src, dst = args.src, args.dst
 
     with _client() as c:
@@ -198,6 +200,7 @@ def cmd_cp(args) -> None:
 
 
 def cmd_mv(args) -> None:
+    """Move (copy then delete) a GCS object."""
     with _client() as c:
         # Copy
         sb, so = _parse_gs_uri(args.src)
@@ -213,6 +216,7 @@ def cmd_mv(args) -> None:
 
 
 def cmd_mb(args) -> None:
+    """Create (make) a GCS bucket."""
     bucket = args.bucket.removeprefix("gs://").rstrip("/")
     with _client() as c:
         body: dict = {"name": bucket}
@@ -223,6 +227,7 @@ def cmd_mb(args) -> None:
 
 
 def cmd_rb(args) -> None:
+    """Remove (delete) a GCS bucket."""
     bucket = args.bucket.removeprefix("gs://").rstrip("/")
     with _client() as c:
         _check(c.delete(f"/storage/v1/b/{bucket}"))
@@ -230,6 +235,7 @@ def cmd_rb(args) -> None:
 
 
 def cmd_rm(args) -> None:
+    """Remove one or more GCS objects (or a bucket with ``-r``)."""
     with _client() as c:
         for uri in args.uris:
             bucket, obj = _parse_gs_uri(uri)
@@ -252,6 +258,7 @@ def cmd_rm(args) -> None:
 
 
 def cmd_cat(args) -> None:
+    """Stream a GCS object's content to stdout."""
     bucket, obj = _parse_gs_uri(args.uri)
     if not obj:
         print("CommandException: must specify an object path", file=sys.stderr)
@@ -264,6 +271,7 @@ def cmd_cat(args) -> None:
 
 
 def cmd_stat(args) -> None:
+    """Display metadata for a GCS object."""
     bucket, obj = _parse_gs_uri(args.uri)
     with _client() as c:
         data = _check(c.get(f"/storage/v1/b/{bucket}/o/{obj}"))
@@ -280,6 +288,7 @@ def cmd_stat(args) -> None:
 
 
 def cmd_du(args) -> None:
+    """Display total disk usage for a bucket or prefix."""
     with _client() as c:
         if not args.uri:
             bdata = _check(c.get("/storage/v1/b", params={"project": _PROJECT}))
@@ -392,6 +401,7 @@ _COMMANDS = {
 
 
 def main() -> None:
+    """Entry point for the gsutillocal CLI."""
     parser = _build_parser()
     args = parser.parse_args()
     _COMMANDS[args.command](args)

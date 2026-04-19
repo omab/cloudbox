@@ -29,6 +29,7 @@ from cloudbox.services.tasks.worker import dispatch_loop
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    """Start the background dispatch loop on startup and cancel it on shutdown."""
     task = asyncio.create_task(dispatch_loop())
     yield
     task.cancel()
@@ -44,6 +45,7 @@ add_request_logging(app, "tasks")
 
 
 def _store():
+    """Return the Cloud Tasks store instance."""
     return get_store()
 
 
@@ -54,6 +56,7 @@ def _store():
 
 @app.post("/v2/projects/{project}/locations/{location}/queues")
 async def create_queue(project: str, location: str, request: Request):
+    """Create a new Cloud Tasks queue."""
     body = await request.json()
     name = (
         body.get("name") or f"projects/{project}/locations/{location}/queues/{uuid.uuid4().hex[:8]}"
@@ -73,6 +76,7 @@ async def list_queues(
     pageSize: int = Query(default=100),
     pageToken: str = Query(default=""),
 ):
+    """List Cloud Tasks queues for a project and location."""
     store = _store()
     prefix = f"projects/{project}/locations/{location}/queues/"
     all_queues = [QueueModel(**v) for v in store.list("queues") if v["name"].startswith(prefix)]
@@ -85,6 +89,7 @@ async def list_queues(
 
 @app.get("/v2/projects/{project}/locations/{location}/queues/{queue_id}")
 async def get_queue(project: str, location: str, queue_id: str):
+    """Get a Cloud Tasks queue by ID."""
     name = f"projects/{project}/locations/{location}/queues/{queue_id}"
     store = _store()
     data = store.get("queues", name)
@@ -95,6 +100,7 @@ async def get_queue(project: str, location: str, queue_id: str):
 
 @app.patch("/v2/projects/{project}/locations/{location}/queues/{queue_id}")
 async def update_queue(project: str, location: str, queue_id: str, request: Request):
+    """Update rate limits or retry config of a Cloud Tasks queue."""
     name = f"projects/{project}/locations/{location}/queues/{queue_id}"
     store = _store()
     data = store.get("queues", name)
@@ -110,6 +116,7 @@ async def update_queue(project: str, location: str, queue_id: str, request: Requ
 
 @app.delete("/v2/projects/{project}/locations/{location}/queues/{queue_id}", status_code=200)
 async def delete_queue(project: str, location: str, queue_id: str):
+    """Delete a Cloud Tasks queue and all its tasks."""
     name = f"projects/{project}/locations/{location}/queues/{queue_id}"
     store = _store()
     if not store.exists("queues", name):
@@ -124,16 +131,19 @@ async def delete_queue(project: str, location: str, queue_id: str):
 
 @app.post("/v2/projects/{project}/locations/{location}/queues/{queue_id}:pause")
 async def pause_queue(project: str, location: str, queue_id: str):
+    """Pause a queue, preventing new task dispatches."""
     return _set_queue_state(project, location, queue_id, QueueState.PAUSED)
 
 
 @app.post("/v2/projects/{project}/locations/{location}/queues/{queue_id}:resume")
 async def resume_queue(project: str, location: str, queue_id: str):
+    """Resume a paused queue."""
     return _set_queue_state(project, location, queue_id, QueueState.RUNNING)
 
 
 @app.post("/v2/projects/{project}/locations/{location}/queues/{queue_id}:purge")
 async def purge_queue(project: str, location: str, queue_id: str):
+    """Delete all tasks in a queue without deleting the queue itself."""
     name = f"projects/{project}/locations/{location}/queues/{queue_id}"
     store = _store()
     if not store.exists("queues", name):
@@ -145,6 +155,7 @@ async def purge_queue(project: str, location: str, queue_id: str):
 
 
 def _set_queue_state(project: str, location: str, queue_id: str, state: str):
+    """Set the state of a queue and persist it."""
     name = f"projects/{project}/locations/{location}/queues/{queue_id}"
     store = _store()
     data = store.get("queues", name)
@@ -162,6 +173,7 @@ def _set_queue_state(project: str, location: str, queue_id: str, state: str):
 
 @app.post("/v2/projects/{project}/locations/{location}/queues/{queue_id}/tasks")
 async def create_task(project: str, location: str, queue_id: str, body: CreateTaskRequest):
+    """Create a new task in a queue."""
     queue_name = f"projects/{project}/locations/{location}/queues/{queue_id}"
     store = _store()
     if not store.exists("queues", queue_name):
@@ -193,6 +205,7 @@ async def list_tasks(
     pageToken: str = Query(default=""),
     responseView: str = Query(default="BASIC"),
 ):
+    """List tasks in a queue."""
     queue_name = f"projects/{project}/locations/{location}/queues/{queue_id}"
     store = _store()
     if not store.exists("queues", queue_name):
@@ -210,6 +223,7 @@ async def list_tasks(
 
 @app.get("/v2/projects/{project}/locations/{location}/queues/{queue_id}/tasks/{task_id}")
 async def get_task(project: str, location: str, queue_id: str, task_id: str):
+    """Get a task by ID."""
     task_name = f"projects/{project}/locations/{location}/queues/{queue_id}/tasks/{task_id}"
     store = _store()
     data = store.get("tasks", task_name)
@@ -222,6 +236,7 @@ async def get_task(project: str, location: str, queue_id: str, task_id: str):
     "/v2/projects/{project}/locations/{location}/queues/{queue_id}/tasks/{task_id}", status_code=200
 )
 async def delete_task(project: str, location: str, queue_id: str, task_id: str):
+    """Delete a task from a queue."""
     task_name = f"projects/{project}/locations/{location}/queues/{queue_id}/tasks/{task_id}"
     store = _store()
     if not store.exists("tasks", task_name):

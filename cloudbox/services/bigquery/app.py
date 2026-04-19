@@ -30,6 +30,7 @@ add_request_logging(app, "bigquery")
 
 
 def _engine():
+    """Return the shared BigQuery engine instance."""
     return get_engine()
 
 
@@ -40,6 +41,7 @@ def _engine():
 
 @app.post("/bigquery/v2/projects/{project}/datasets", status_code=200)
 async def create_dataset(project: str, request: Request):
+    """Create a BigQuery dataset."""
     body = await request.json()
     ds_ref = body.get("datasetReference", {})
     dataset_id = ds_ref.get("datasetId") or body.get("id", "")
@@ -53,6 +55,7 @@ async def create_dataset(project: str, request: Request):
 
 @app.get("/bigquery/v2/projects/{project}/datasets/{dataset_id}")
 async def get_dataset(project: str, dataset_id: str):
+    """Get a BigQuery dataset by ID."""
     meta = _engine().get_dataset(project, dataset_id)
     if meta is None:
         raise GCPError(404, f"Dataset {project}:{dataset_id} not found")
@@ -61,6 +64,7 @@ async def get_dataset(project: str, dataset_id: str):
 
 @app.get("/bigquery/v2/projects/{project}/datasets")
 async def list_datasets(project: str):
+    """List all BigQuery datasets in a project."""
     items = _engine().list_datasets(project)
     return {
         "kind": "bigquery#datasetList",
@@ -82,6 +86,7 @@ async def delete_dataset(
     dataset_id: str,
     deleteContents: bool = Query(default=False),
 ):
+    """Delete a BigQuery dataset, optionally including all tables."""
     try:
         found = _engine().delete_dataset(project, dataset_id, delete_contents=deleteContents)
     except ValueError as e:
@@ -98,6 +103,7 @@ async def delete_dataset(
 
 @app.post("/bigquery/v2/projects/{project}/datasets/{dataset_id}/tables", status_code=200)
 async def create_table(project: str, dataset_id: str, request: Request):
+    """Create a BigQuery table or view."""
     body = await request.json()
     tbl_ref = body.get("tableReference", {})
     table_id = tbl_ref.get("tableId") or ""
@@ -116,6 +122,7 @@ async def create_table(project: str, dataset_id: str, request: Request):
 @app.patch("/bigquery/v2/projects/{project}/datasets/{dataset_id}/tables/{table_id}")
 @app.put("/bigquery/v2/projects/{project}/datasets/{dataset_id}/tables/{table_id}")
 async def update_table(project: str, dataset_id: str, table_id: str, request: Request):
+    """Update a BigQuery table or view schema/definition."""
     body = await request.json()
     try:
         if "view" in body:
@@ -129,6 +136,7 @@ async def update_table(project: str, dataset_id: str, table_id: str, request: Re
 
 @app.get("/bigquery/v2/projects/{project}/datasets/{dataset_id}/tables/{table_id}")
 async def get_table(project: str, dataset_id: str, table_id: str):
+    """Get a BigQuery table or view by ID."""
     meta = _engine().get_table(project, dataset_id, table_id)
     if meta is None:
         raise GCPError(404, f"Table {project}:{dataset_id}.{table_id} not found")
@@ -137,6 +145,7 @@ async def get_table(project: str, dataset_id: str, table_id: str):
 
 @app.get("/bigquery/v2/projects/{project}/datasets/{dataset_id}/tables")
 async def list_tables(project: str, dataset_id: str):
+    """List all tables and views in a BigQuery dataset."""
     items = _engine().list_tables(project, dataset_id)
     return {
         "kind": "bigquery#tableList",
@@ -158,6 +167,7 @@ async def list_tables(project: str, dataset_id: str):
     status_code=204,
 )
 async def delete_table(project: str, dataset_id: str, table_id: str):
+    """Delete a BigQuery table or view."""
     found = _engine().delete_table(project, dataset_id, table_id)
     if not found:
         raise GCPError(404, f"Table {project}:{dataset_id}.{table_id} not found")
@@ -171,6 +181,7 @@ async def delete_table(project: str, dataset_id: str, table_id: str):
 
 @app.post("/bigquery/v2/projects/{project}/jobs", status_code=200)
 async def insert_job(project: str, request: Request):
+    """Submit a BigQuery job (currently only query jobs are supported)."""
     body = await request.json()
     config = body.get("configuration", {})
     query_cfg = config.get("query", {})
@@ -198,6 +209,7 @@ async def insert_job(project: str, request: Request):
 
 @app.get("/bigquery/v2/projects/{project}/jobs/{job_id}")
 async def get_job(project: str, job_id: str):
+    """Get a BigQuery job by ID."""
     job = _engine().get_job(project, job_id)
     if job is None:
         raise GCPError(404, f"Job {project}:{job_id} not found")
@@ -229,6 +241,7 @@ async def get_query_results(
     pageToken: str = Query(default=""),
     timeoutMs: int = Query(default=0),
 ):
+    """Retrieve paged query results for a completed BigQuery job."""
     result = _engine().get_query_results(project, job_id)
     if result is None:
         raise GCPError(404, f"Job {project}:{job_id} not found")
@@ -238,6 +251,7 @@ async def get_query_results(
 # Synchronous query shortcut  (POST /queries)
 @app.post("/bigquery/v2/projects/{project}/queries", status_code=200)
 async def sync_query(project: str, request: Request):
+    """Run a synchronous BigQuery query and return results immediately."""
     body = await request.json()
     sql = body.get("query", "")
     if not sql:
@@ -287,6 +301,7 @@ async def sync_query(project: str, request: Request):
     status_code=200,
 )
 async def insert_all(project: str, dataset_id: str, table_id: str, request: Request):
+    """Stream-insert rows into a BigQuery table."""
     body = await request.json()
     rows = body.get("rows", [])
     try:
@@ -307,6 +322,7 @@ async def list_tabledata(
     maxResults: int = Query(default=1000),
     pageToken: str = Query(default=""),
 ):
+    """List rows from a BigQuery table (tabledata.list)."""
     try:
         result = _engine().list_rows(
             project,

@@ -12,7 +12,6 @@ from datetime import UTC
 from typing import Annotated
 
 from fastapi import FastAPI, Header, Query, Request, Response
-from fastapi.responses import JSONResponse, StreamingResponse
 
 from cloudbox.core.errors import GCPError, add_gcp_exception_handler
 from cloudbox.core.middleware import add_request_logging
@@ -133,6 +132,7 @@ add_request_logging(app, "gcs")
 
 
 def _store():
+    """Return the GCS store instance."""
     return get_store()
 
 
@@ -143,6 +143,7 @@ def _store():
 
 @app.post("/storage/v1/b", status_code=200)
 async def create_bucket(request: Request):
+    """Create a new GCS bucket."""
     body = await request.json()
     name = body.get("name", "")
     if not name:
@@ -157,6 +158,7 @@ async def create_bucket(request: Request):
 
 @app.get("/storage/v1/b")
 async def list_buckets(project: str = Query(default="local-project")):
+    """List all GCS buckets for a project."""
     store = _store()
     items = [BucketModel(**b) for b in store.list("buckets")]
     return BucketListResponse(items=items).model_dump(exclude_none=True)
@@ -164,6 +166,7 @@ async def list_buckets(project: str = Query(default="local-project")):
 
 @app.get("/storage/v1/b/{bucket}")
 async def get_bucket(bucket: str):
+    """Get a GCS bucket's metadata."""
     store = _store()
     data = store.get("buckets", bucket)
     if data is None:
@@ -173,6 +176,7 @@ async def get_bucket(bucket: str):
 
 @app.patch("/storage/v1/b/{bucket}")
 async def patch_bucket(bucket: str, request: Request):
+    """Update mutable fields on a GCS bucket."""
     store = _store()
     data = store.get("buckets", bucket)
     if data is None:
@@ -191,6 +195,7 @@ async def patch_bucket(bucket: str, request: Request):
 
 @app.delete("/storage/v1/b/{bucket}", status_code=204)
 async def delete_bucket(bucket: str):
+    """Delete a GCS bucket (must be empty)."""
     store = _store()
     if not store.exists("buckets", bucket):
         raise GCPError(404, "The specified bucket does not exist.")
@@ -209,6 +214,7 @@ async def delete_bucket(bucket: str):
 
 @app.get("/storage/v1/b/{bucket}/cors")
 async def get_bucket_cors(bucket: str):
+    """Get the CORS configuration for a bucket."""
     store = _store()
     data = store.get("buckets", bucket)
     if data is None:
@@ -218,6 +224,7 @@ async def get_bucket_cors(bucket: str):
 
 @app.put("/storage/v1/b/{bucket}/cors")
 async def set_bucket_cors(bucket: str, request: Request):
+    """Replace the CORS configuration for a bucket."""
     store = _store()
     data = store.get("buckets", bucket)
     if data is None:
@@ -234,6 +241,7 @@ async def set_bucket_cors(bucket: str, request: Request):
 
 @app.delete("/storage/v1/b/{bucket}/cors", status_code=204)
 async def delete_bucket_cors(bucket: str):
+    """Clear the CORS configuration for a bucket."""
     store = _store()
     data = store.get("buckets", bucket)
     if data is None:
@@ -254,6 +262,7 @@ async def delete_bucket_cors(bucket: str):
 
 @app.get("/storage/v1/b/{bucket}/retentionPolicy")
 async def get_bucket_retention(bucket: str):
+    """Get the retention policy for a bucket."""
     store = _store()
     data = store.get("buckets", bucket)
     if data is None:
@@ -264,6 +273,7 @@ async def get_bucket_retention(bucket: str):
 
 @app.patch("/storage/v1/b/{bucket}/retentionPolicy")
 async def set_bucket_retention(bucket: str, request: Request):
+    """Set or update the retention policy for a bucket."""
     from cloudbox.services.gcs.models import RetentionPolicy, _now_rfc3339
 
     store = _store()
@@ -287,6 +297,7 @@ async def set_bucket_retention(bucket: str, request: Request):
 
 @app.delete("/storage/v1/b/{bucket}/retentionPolicy", status_code=204)
 async def delete_bucket_retention(bucket: str):
+    """Remove the retention policy from a bucket (fails if the policy is locked)."""
     from cloudbox.services.gcs.models import _now_rfc3339
 
     store = _store()
@@ -318,6 +329,7 @@ async def upload_object(
     x_upload_content_type: Annotated[str | None, Header(alias="x-upload-content-type")] = None,
     x_upload_content_length: Annotated[str | None, Header(alias="x-upload-content-length")] = None,
 ):
+    """Upload a new object (media, multipart, or resumable initiation)."""
     store = _store()
     if not store.exists("buckets", bucket):
         raise GCPError(404, "The specified bucket does not exist.")
@@ -544,6 +556,7 @@ def _retention_expiry(bucket_data: dict, time_created: str) -> str:
 
 
 def _store_object(store, bucket: str, name: str, body: bytes, content_type: str) -> dict:
+    """Persist an object's body and metadata, then fire OBJECT_FINALIZE notifications."""
     from cloudbox.services.gcs.models import _now_rfc3339
 
     key = f"{bucket}/{name}"
@@ -579,6 +592,7 @@ def _store_object(store, bucket: str, name: str, body: bytes, content_type: str)
 
 
 def _crc32c_b64(data: bytes) -> str:
+    """Compute the CRC32c checksum of data and return it base64-encoded."""
     import struct
 
     crc = 0
@@ -684,6 +698,7 @@ async def list_objects(
     maxResults: int = Query(default=1000),
     pageToken: str = Query(default=""),
 ):
+    """List objects in a bucket with optional prefix and delimiter filtering."""
     store = _store()
     if not store.exists("buckets", bucket):
         raise GCPError(404, "The specified bucket does not exist.")
@@ -740,6 +755,7 @@ async def get_object_metadata(
     if_match: Annotated[str | None, Header(alias="if-match")] = None,
     if_none_match: Annotated[str | None, Header(alias="if-none-match")] = None,
 ):
+    """Get object metadata or download object body (when alt=media)."""
     store = _store()
     key = f"{bucket}/{object_name}"
     data = store.get("objects", key)
@@ -768,6 +784,7 @@ async def download_object(
     object_name: str,
     range: Annotated[str | None, Header(alias="range")] = None,
 ):
+    """Download an object's body via the /download/storage path."""
     store = _store()
     key = f"{bucket}/{object_name}"
     data = store.get("objects", key)
@@ -788,6 +805,7 @@ async def update_object_metadata(
     if_match: Annotated[str | None, Header(alias="if-match")] = None,
     if_none_match: Annotated[str | None, Header(alias="if-none-match")] = None,
 ):
+    """Update mutable metadata fields on an existing GCS object."""
     store = _store()
     key = f"{bucket}/{object_name}"
     data = store.get("objects", key)
@@ -829,6 +847,7 @@ async def delete_object(
     if_match: Annotated[str | None, Header(alias="if-match")] = None,
     if_none_match: Annotated[str | None, Header(alias="if-none-match")] = None,
 ):
+    """Delete a GCS object (blocked if within a retention period)."""
     store = _store()
     key = f"{bucket}/{object_name}"
     obj_data = store.get("objects", key)
@@ -867,6 +886,7 @@ async def delete_object(
     "/storage/v1/b/{src_bucket}/o/{src_object:path}/copyTo/b/{dst_bucket}/o/{dst_object:path}"
 )
 async def copy_object(src_bucket: str, src_object: str, dst_bucket: str, dst_object: str):
+    """Copy a GCS object to a new location (server-side copy)."""
     store = _store()
     src_key = f"{src_bucket}/{src_object}"
     data = store.get("objects", src_key)
@@ -987,6 +1007,7 @@ async def rewrite_object(
 
 
 def _next_notification_id(store, bucket: str) -> str:
+    """Return the next sequential notification config ID for a bucket."""
     prefix = f"{bucket}/"
     existing_ids = [
         int(k[len(prefix) :])
@@ -998,6 +1019,7 @@ def _next_notification_id(store, bucket: str) -> str:
 
 @app.post("/storage/v1/b/{bucket}/notificationConfigs", status_code=200)
 async def create_notification(bucket: str, request: Request):
+    """Create a bucket notification configuration."""
     store = _store()
     if not store.exists("buckets", bucket):
         raise GCPError(404, "The specified bucket does not exist.")
@@ -1014,6 +1036,7 @@ async def create_notification(bucket: str, request: Request):
 
 @app.get("/storage/v1/b/{bucket}/notificationConfigs")
 async def list_notifications(bucket: str):
+    """List all notification configurations for a bucket."""
     store = _store()
     if not store.exists("buckets", bucket):
         raise GCPError(404, "The specified bucket does not exist.")
@@ -1032,6 +1055,7 @@ async def list_notifications(bucket: str):
 
 @app.get("/storage/v1/b/{bucket}/notificationConfigs/{notif_id}")
 async def get_notification(bucket: str, notif_id: str):
+    """Get a bucket notification configuration by ID."""
     store = _store()
     data = store.get("notifications", f"{bucket}/{notif_id}")
     if data is None:
@@ -1041,6 +1065,7 @@ async def get_notification(bucket: str, notif_id: str):
 
 @app.delete("/storage/v1/b/{bucket}/notificationConfigs/{notif_id}", status_code=204)
 async def delete_notification(bucket: str, notif_id: str):
+    """Delete a bucket notification configuration."""
     store = _store()
     if not store.delete("notifications", f"{bucket}/{notif_id}"):
         raise GCPError(404, f"Notification config {notif_id} not found on bucket {bucket}.")

@@ -13,12 +13,16 @@ def _now() -> str:
 
 
 class RateLimits(BaseModel):
+    """Rate limiting configuration for a Cloud Tasks queue."""
+
     maxDispatchesPerSecond: float = 500.0
     maxBurstSize: int = 100
     maxConcurrentDispatches: int = 1000
 
 
 class RetryConfig(BaseModel):
+    """Retry configuration for a Cloud Tasks queue."""
+
     maxAttempts: int = 100
     maxRetryDuration: str = "0s"
     minBackoff: str = "0.100s"
@@ -27,12 +31,16 @@ class RetryConfig(BaseModel):
 
 
 class QueueState:
+    """Enumeration of Cloud Tasks queue states."""
+
     RUNNING = "RUNNING"
     PAUSED = "PAUSED"
     DISABLED = "DISABLED"
 
 
 class QueueModel(BaseModel):
+    """A Cloud Tasks queue resource."""
+
     name: str
     rateLimits: RateLimits = Field(default_factory=RateLimits)
     retryConfig: RetryConfig = Field(default_factory=RetryConfig)
@@ -40,6 +48,8 @@ class QueueModel(BaseModel):
 
 
 class HttpRequest(BaseModel):
+    """HTTP request configuration for a Cloud Tasks task."""
+
     url: str
     httpMethod: str = "POST"
     headers: dict[str, str] = Field(default_factory=dict)
@@ -47,6 +57,8 @@ class HttpRequest(BaseModel):
 
 
 class TaskAttempt(BaseModel):
+    """Details of a single task dispatch attempt."""
+
     scheduleTime: str = ""
     dispatchTime: str = ""
     responseTime: str = ""
@@ -54,6 +66,8 @@ class TaskAttempt(BaseModel):
 
 
 class TaskModel(BaseModel):
+    """A Cloud Tasks task resource."""
+
     name: str
     httpRequest: HttpRequest | None = None
     scheduleTime: str = Field(default_factory=_now)
@@ -67,15 +81,21 @@ class TaskModel(BaseModel):
 
 
 class CreateTaskRequest(BaseModel):
+    """Request body for creating a new task."""
+
     task: dict[str, Any]
     responseView: str = "BASIC"
 
 
 class ListQueuesResponse(BaseModel):
+    """Response body for listing queues."""
+
     queues: list[QueueModel] = Field(default_factory=list)
     nextPageToken: str | None = None
 
 
 class ListTasksResponse(BaseModel):
+    """Response body for listing tasks in a queue."""
+
     tasks: list[TaskModel] = Field(default_factory=list)
     nextPageToken: str | None = None

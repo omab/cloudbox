@@ -194,6 +194,7 @@ def _parse_col_def(col_def: str) -> tuple[str, str, bool] | None:
 
 def _rewrite_create_table(stmt: str, schema: str) -> tuple[str, list[str]]:
     """Rewrite a Spanner CREATE TABLE statement to DuckDB.
+
     Returns (duckdb_sql, pk_columns).
     """
     # Normalize whitespace while preserving structure
@@ -260,6 +261,7 @@ def _rewrite_create_table(stmt: str, schema: str) -> tuple[str, list[str]]:
 
 def _rewrite_ddl(stmt: str, schema: str) -> tuple[str, list[str]]:
     """Rewrite a single Spanner DDL statement to DuckDB SQL.
+
     Returns (duckdb_sql, pk_cols) where pk_cols is non-empty only for CREATE TABLE.
     """
     s = stmt.strip()
@@ -356,6 +358,7 @@ def _is_select(sql: str) -> bool:
 
 def _rewrite_spanner_sql(sql: str, schema: str) -> tuple[str, list[str]]:
     """Rewrite Spanner SQL to DuckDB SQL.
+
     Returns (duckdb_sql, param_names_in_order).
     """
     param_names: list[str] = []
@@ -415,6 +418,7 @@ class SpannerEngine:
     """Single DuckDB connection backing the Cloud Spanner emulator."""
 
     def __init__(self) -> None:
+        """Initialize the engine with an in-memory or file-backed DuckDB connection."""
         if settings.data_dir:
             self._db_path = str(Path(settings.data_dir) / "spanner.duckdb")
         else:
@@ -475,6 +479,7 @@ class SpannerEngine:
     # -------------------------------------------------------------------------
 
     def list_instance_configs(self, project: str) -> list[dict]:
+        """Return a stub list of available instance configurations."""
         return [
             {
                 "name": f"projects/{project}/instanceConfigs/regional-us-central1",
@@ -488,6 +493,7 @@ class SpannerEngine:
     # -------------------------------------------------------------------------
 
     def create_instance(self, project: str, instance_id: str, body: dict) -> dict:
+        """Create a new Spanner instance and return a completed LRO."""
         key = f"{project}/{instance_id}"
         if key in self._instances:
             raise ValueError(f"Instance already exists: {instance_id}")
@@ -518,13 +524,16 @@ class SpannerEngine:
         return op
 
     def get_instance(self, project: str, instance_id: str) -> dict | None:
+        """Return instance metadata or None if not found."""
         return self._instances.get(f"{project}/{instance_id}")
 
     def list_instances(self, project: str) -> list[dict]:
+        """Return all instance metadata dicts for the given project."""
         prefix = f"{project}/"
         return [v for k, v in self._instances.items() if k.startswith(prefix)]
 
     def update_instance(self, project: str, instance_id: str, body: dict) -> dict:
+        """Update instance display name, node count, processing units, or labels."""
         key = f"{project}/{instance_id}"
         meta = self._instances.get(key)
         if meta is None:
@@ -537,6 +546,7 @@ class SpannerEngine:
         return meta
 
     def delete_instance(self, project: str, instance_id: str) -> bool:
+        """Delete an instance and all its databases; return False if not found."""
         key = f"{project}/{instance_id}"
         if key not in self._instances:
             return False
@@ -576,6 +586,7 @@ class SpannerEngine:
     def create_database(
         self, project: str, instance_id: str, database_id: str, extra_statements: list[str]
     ) -> dict:
+        """Create a database, apply extra DDL statements, and return a completed LRO."""
         inst_key = f"{project}/{instance_id}"
         if inst_key not in self._instances:
             raise ValueError(f"Instance not found: {instance_id}")
@@ -633,13 +644,16 @@ class SpannerEngine:
         return op
 
     def get_database(self, project: str, instance_id: str, database_id: str) -> dict | None:
+        """Return database metadata or None if not found."""
         return self._databases.get(f"{project}/{instance_id}/databases/{database_id}")
 
     def list_databases(self, project: str, instance_id: str) -> list[dict]:
+        """Return all database metadata dicts for the given instance."""
         prefix = f"{project}/{instance_id}/databases/"
         return [v for k, v in self._databases.items() if k.startswith(prefix)]
 
     def delete_database(self, project: str, instance_id: str, database_id: str) -> bool:
+        """Delete a database and drop its DuckDB schema; return False if not found."""
         db_key = f"{project}/{instance_id}/databases/{database_id}"
         if db_key not in self._databases:
             return False
@@ -651,6 +665,7 @@ class SpannerEngine:
     def execute_ddl(
         self, project: str, instance_id: str, database_id: str, statements: list[str]
     ) -> dict:
+        """Execute DDL statements against DuckDB and record them in the DDL history."""
         db_key = f"{project}/{instance_id}/databases/{database_id}"
         if db_key not in self._databases:
             raise ValueError(f"Database not found: {database_id}")
@@ -689,6 +704,7 @@ class SpannerEngine:
         return op
 
     def get_database_ddl(self, project: str, instance_id: str, database_id: str) -> list[str]:
+        """Return the list of DDL statements applied to a database."""
         db_key = f"{project}/{instance_id}/databases/{database_id}"
         return self._ddl_statements.get(db_key, [])
 
@@ -707,6 +723,7 @@ class SpannerEngine:
     def create_session(
         self, project: str, instance_id: str, database_id: str, labels: dict | None = None
     ) -> dict:
+        """Create a new session for a database and return its metadata."""
         db_key = f"{project}/{instance_id}/databases/{database_id}"
         if db_key not in self._databases:
             raise ValueError(f"Database not found: {database_id}")
@@ -726,12 +743,14 @@ class SpannerEngine:
         return {k: v for k, v in meta.items() if not k.startswith("_")}
 
     def get_session(self, session_name: str) -> dict | None:
+        """Return session metadata (excluding internal keys) or None if not found."""
         meta = self._sessions.get(session_name)
         if meta is None:
             return None
         return {k: v for k, v in meta.items() if not k.startswith("_")}
 
     def list_sessions(self, project: str, instance_id: str, database_id: str) -> list[dict]:
+        """Return all sessions for a database, excluding internal keys."""
         prefix = f"projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/"
         return [
             {k: v for k, v in meta.items() if not k.startswith("_")}
@@ -740,6 +759,7 @@ class SpannerEngine:
         ]
 
     def delete_session(self, session_name: str) -> bool:
+        """Delete a session; return False if not found."""
         if session_name not in self._sessions:
             return False
         del self._sessions[session_name]
@@ -753,6 +773,7 @@ class SpannerEngine:
         count: int,
         labels: dict | None = None,
     ) -> list[dict]:
+        """Create multiple sessions for a database in a single call."""
         return [
             self.create_session(project, instance_id, database_id, labels) for _ in range(count)
         ]
@@ -775,6 +796,7 @@ class SpannerEngine:
     # -------------------------------------------------------------------------
 
     def begin_transaction(self, session_name: str, options: dict) -> dict:
+        """Begin a transaction on a session and return the transaction ID."""
         if session_name not in self._sessions:
             raise ValueError(f"Session not found: {session_name}")
         txn_id = base64.b64encode(str(uuid.uuid4()).encode()).decode()
@@ -785,6 +807,7 @@ class SpannerEngine:
         return txn
 
     def rollback(self, session_name: str, transaction_id: str) -> None:
+        """Roll back a transaction by removing it from the active set."""
         self._transactions.pop(transaction_id, None)
 
     # -------------------------------------------------------------------------
@@ -908,7 +931,7 @@ class SpannerEngine:
                     self._exec(f'DELETE FROM "{schema}"."{table}" WHERE {where}', params)
         elif keys:
             # No PK info — try first-column deletion
-            for key in keys:
+            for _key in keys:
                 # Can't safely delete without knowing PKs; skip
                 pass
 
@@ -945,6 +968,7 @@ class SpannerEngine:
         mutations: list[dict],
         transaction_id: str | None = None,
     ) -> dict:
+        """Apply mutations to DuckDB and commit the transaction."""
         if session_name not in self._sessions:
             raise ValueError(f"Session not found: {session_name}")
 
@@ -984,6 +1008,7 @@ class SpannerEngine:
         limit: int = 0,
         index: str = "",
     ) -> dict:
+        """Read columns from a table using a key set and return a Spanner result set."""
         schema = self._session_schema(session_name)
         col_str = ", ".join(f'"{c}"' for c in columns)
         limit_clause = f" LIMIT {limit}" if limit > 0 else ""
@@ -1110,6 +1135,7 @@ class SpannerEngine:
         param_types: dict | None = None,
         transaction: dict | None = None,
     ) -> dict:
+        """Execute a SQL query or DML against DuckDB and return a Spanner result set."""
         schema = self._session_schema(session_name)
         rewritten, param_names = _rewrite_spanner_sql(sql, schema)
         positional = self._resolve_params(param_names, params or {}, param_types or {})
@@ -1153,6 +1179,7 @@ class SpannerEngine:
         session_name: str,
         statements: list[dict],
     ) -> dict:
+        """Execute a batch of DML statements and return per-statement row counts."""
         schema = self._session_schema(session_name)
         result_sets = []
         for stmt_body in statements:
@@ -1185,6 +1212,7 @@ class SpannerEngine:
     # -------------------------------------------------------------------------
 
     def get_operation(self, op_name: str) -> dict | None:
+        """Return a stored LRO record or None if not found."""
         return self._operations.get(op_name)
 
     # -------------------------------------------------------------------------
@@ -1192,6 +1220,7 @@ class SpannerEngine:
     # -------------------------------------------------------------------------
 
     def list_tables(self, project: str, instance_id: str, database_id: str) -> list[str]:
+        """Return the table names in a database's DuckDB schema."""
         db_key = f"{project}/{instance_id}/databases/{database_id}"
         if db_key not in self._databases:
             return []
@@ -1214,4 +1243,5 @@ _engine = SpannerEngine()
 
 
 def get_engine() -> SpannerEngine:
+    """Return the module-level SpannerEngine singleton."""
     return _engine

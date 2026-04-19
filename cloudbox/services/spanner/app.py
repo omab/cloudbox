@@ -17,7 +17,7 @@ Operations:     get (always returns done=true)
 
 from __future__ import annotations
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
 from cloudbox.core.errors import GCPError, add_gcp_exception_handler
@@ -40,12 +40,14 @@ def _engine():
 
 @app.get("/v1/projects/{project}/instanceConfigs")
 async def list_instance_configs(project: str):
+    """List available Cloud Spanner instance configurations."""
     configs = _engine().list_instance_configs(project)
     return {"instanceConfigs": configs}
 
 
 @app.get("/v1/projects/{project}/instanceConfigs/{config}")
 async def get_instance_config(project: str, config: str):
+    """Get a Cloud Spanner instance configuration by name."""
     configs = _engine().list_instance_configs(project)
     return configs[0] if configs else {"name": f"projects/{project}/instanceConfigs/{config}"}
 
@@ -57,6 +59,7 @@ async def get_instance_config(project: str, config: str):
 
 @app.post("/v1/projects/{project}/instances", status_code=200)
 async def create_instance(project: str, request: Request):
+    """Create a new Cloud Spanner instance."""
     body = await request.json()
     instance_id = body.get("instanceId", "")
     if not instance_id:
@@ -71,6 +74,7 @@ async def create_instance(project: str, request: Request):
 
 @app.get("/v1/projects/{project}/instances/{instance_id}")
 async def get_instance(project: str, instance_id: str):
+    """Get a Cloud Spanner instance by ID."""
     meta = _engine().get_instance(project, instance_id)
     if meta is None:
         raise GCPError(404, f"Instance not found: {instance_id}")
@@ -79,12 +83,14 @@ async def get_instance(project: str, instance_id: str):
 
 @app.get("/v1/projects/{project}/instances")
 async def list_instances(project: str):
+    """List all Cloud Spanner instances in a project."""
     items = _engine().list_instances(project)
     return {"instances": items}
 
 
 @app.patch("/v1/projects/{project}/instances/{instance_id}", status_code=200)
 async def update_instance(project: str, instance_id: str, request: Request):
+    """Update a Cloud Spanner instance's display name, node count, or labels."""
     body = await request.json()
     try:
         meta = _engine().update_instance(project, instance_id, body)
@@ -95,6 +101,7 @@ async def update_instance(project: str, instance_id: str, request: Request):
 
 @app.delete("/v1/projects/{project}/instances/{instance_id}", status_code=200)
 async def delete_instance(project: str, instance_id: str):
+    """Delete a Cloud Spanner instance and all its databases."""
     found = _engine().delete_instance(project, instance_id)
     if not found:
         raise GCPError(404, f"Instance not found: {instance_id}")
@@ -108,6 +115,7 @@ async def delete_instance(project: str, instance_id: str):
 
 @app.post("/v1/projects/{project}/instances/{instance_id}/databases", status_code=200)
 async def create_database(project: str, instance_id: str, request: Request):
+    """Create a Cloud Spanner database and apply any extra DDL statements."""
     body = await request.json()
     db_id = body.get("createStatement", "").replace("CREATE DATABASE ", "").strip().strip("`")
     if not db_id:
@@ -124,6 +132,7 @@ async def create_database(project: str, instance_id: str, request: Request):
 
 @app.get("/v1/projects/{project}/instances/{instance_id}/databases/{database_id}")
 async def get_database(project: str, instance_id: str, database_id: str):
+    """Get a Cloud Spanner database by ID."""
     meta = _engine().get_database(project, instance_id, database_id)
     if meta is None:
         raise GCPError(404, f"Database not found: {database_id}")
@@ -132,6 +141,7 @@ async def get_database(project: str, instance_id: str, database_id: str):
 
 @app.get("/v1/projects/{project}/instances/{instance_id}/databases")
 async def list_databases(project: str, instance_id: str):
+    """List all databases in a Cloud Spanner instance."""
     items = _engine().list_databases(project, instance_id)
     return {"databases": items}
 
@@ -140,6 +150,7 @@ async def list_databases(project: str, instance_id: str):
     "/v1/projects/{project}/instances/{instance_id}/databases/{database_id}", status_code=200
 )
 async def delete_database(project: str, instance_id: str, database_id: str):
+    """Delete a Cloud Spanner database."""
     found = _engine().delete_database(project, instance_id, database_id)
     if not found:
         raise GCPError(404, f"Database not found: {database_id}")
@@ -150,6 +161,7 @@ async def delete_database(project: str, instance_id: str, database_id: str):
     "/v1/projects/{project}/instances/{instance_id}/databases/{database_id}/ddl", status_code=200
 )
 async def update_ddl(project: str, instance_id: str, database_id: str, request: Request):
+    """Execute DDL statements (CREATE/ALTER/DROP) against a Spanner database."""
     body = await request.json()
     statements = body.get("statements", [])
     if not statements:
@@ -165,6 +177,7 @@ async def update_ddl(project: str, instance_id: str, database_id: str, request: 
     "/v1/projects/{project}/instances/{instance_id}/databases/{database_id}/ddl", status_code=200
 )
 async def get_database_ddl(project: str, instance_id: str, database_id: str):
+    """Return the DDL statements that define a database's schema."""
     stmts = _engine().get_database_ddl(project, instance_id, database_id)
     return {"statements": stmts}
 
@@ -179,6 +192,7 @@ async def get_database_ddl(project: str, instance_id: str, database_id: str):
     status_code=200,
 )
 async def create_session(project: str, instance_id: str, database_id: str, request: Request):
+    """Create a Cloud Spanner session for a database."""
     body = await request.json()
     labels = body.get("session", {}).get("labels") or body.get("labels") or {}
     try:
@@ -193,6 +207,7 @@ async def create_session(project: str, instance_id: str, database_id: str, reque
     status_code=200,
 )
 async def batch_create_sessions(project: str, instance_id: str, database_id: str, request: Request):
+    """Batch-create multiple sessions for a database."""
     body = await request.json()
     count = body.get("sessionCount", 1)
     labels = body.get("sessionTemplate", {}).get("labels") or {}
@@ -208,6 +223,7 @@ async def batch_create_sessions(project: str, instance_id: str, database_id: str
     status_code=200,
 )
 async def list_sessions(project: str, instance_id: str, database_id: str):
+    """List all active sessions for a database."""
     sessions = _engine().list_sessions(project, instance_id, database_id)
     return {"sessions": sessions}
 
@@ -217,6 +233,7 @@ async def list_sessions(project: str, instance_id: str, database_id: str):
     status_code=200,
 )
 async def get_session(project: str, instance_id: str, database_id: str, session_id: str):
+    """Get a Cloud Spanner session by ID."""
     session_name = (
         f"projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/{session_id}"
     )
@@ -231,6 +248,7 @@ async def get_session(project: str, instance_id: str, database_id: str, session_
     status_code=200,
 )
 async def delete_session(project: str, instance_id: str, database_id: str, session_id: str):
+    """Delete a Cloud Spanner session."""
     session_name = (
         f"projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/{session_id}"
     )
@@ -252,6 +270,7 @@ async def delete_session(project: str, instance_id: str, database_id: str, sessi
 async def begin_transaction(
     project: str, instance_id: str, database_id: str, session_id: str, request: Request
 ):
+    """Begin a read-write or read-only transaction on a session."""
     session_name = (
         f"projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/{session_id}"
     )
@@ -271,6 +290,7 @@ async def begin_transaction(
 async def rollback(
     project: str, instance_id: str, database_id: str, session_id: str, request: Request
 ):
+    """Roll back an active read-write transaction."""
     session_name = (
         f"projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/{session_id}"
     )
@@ -292,6 +312,7 @@ async def rollback(
 async def commit(
     project: str, instance_id: str, database_id: str, session_id: str, request: Request
 ):
+    """Apply a list of mutations and commit the transaction."""
     session_name = (
         f"projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/{session_id}"
     )
@@ -317,6 +338,7 @@ async def commit(
     status_code=200,
 )
 async def read(project: str, instance_id: str, database_id: str, session_id: str, request: Request):
+    """Read rows from a Spanner table by key set."""
     session_name = (
         f"projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/{session_id}"
     )
@@ -346,6 +368,7 @@ async def read(project: str, instance_id: str, database_id: str, session_id: str
 async def streaming_read(
     project: str, instance_id: str, database_id: str, session_id: str, request: Request
 ):
+    """Stream-read rows from a Spanner table, returning a chunked JSON response."""
     session_name = (
         f"projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/{session_id}"
     )
@@ -394,6 +417,7 @@ async def streaming_read(
 async def execute_sql(
     project: str, instance_id: str, database_id: str, session_id: str, request: Request
 ):
+    """Execute a SQL query or DML statement and return all results."""
     session_name = (
         f"projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/{session_id}"
     )
@@ -419,6 +443,7 @@ async def execute_sql(
 async def execute_streaming_sql(
     project: str, instance_id: str, database_id: str, session_id: str, request: Request
 ):
+    """Execute a SQL query and return results as a streaming response."""
     session_name = (
         f"projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/{session_id}"
     )
@@ -442,6 +467,7 @@ async def execute_streaming_sql(
 async def execute_batch_dml(
     project: str, instance_id: str, database_id: str, session_id: str, request: Request
 ):
+    """Execute a batch of DML statements and return per-statement result sets."""
     session_name = (
         f"projects/{project}/instances/{instance_id}/databases/{database_id}/sessions/{session_id}"
     )
@@ -463,6 +489,7 @@ async def execute_batch_dml(
     "/v1/projects/{project}/instances/{instance_id}/databases/{database_id}/operations/{op_id}"
 )
 async def get_db_operation(project: str, instance_id: str, database_id: str, op_id: str):
+    """Get a long-running database operation; always returns done=true."""
     op_name = (
         f"projects/{project}/instances/{instance_id}/databases/{database_id}/operations/{op_id}"
     )
@@ -474,6 +501,7 @@ async def get_db_operation(project: str, instance_id: str, database_id: str, op_
 
 @app.get("/v1/projects/{project}/instances/{instance_id}/operations/{op_id}")
 async def get_instance_operation(project: str, instance_id: str, op_id: str):
+    """Get a long-running instance operation; always returns done=true."""
     op_name = f"projects/{project}/instances/{instance_id}/operations/{op_id}"
     op = _engine().get_operation(op_name)
     if op is not None:
@@ -483,9 +511,11 @@ async def get_instance_operation(project: str, instance_id: str, op_id: str):
 
 @app.get("/v1/projects/{project}/instances/{instance_id}/databases/{database_id}/operations")
 async def list_db_operations(project: str, instance_id: str, database_id: str):
+    """List database operations (always returns empty list)."""
     return {"operations": []}
 
 
 @app.get("/v1/projects/{project}/instances/{instance_id}/operations")
 async def list_instance_operations(project: str, instance_id: str):
+    """List instance operations (always returns empty list)."""
     return {"operations": []}

@@ -23,6 +23,13 @@ class NamespacedStore:
     """
 
     def __init__(self, name: str, data_dir: str | None = None):
+        """Initialize the store.
+
+        Args:
+            name: Service name used as the subdirectory for persistence.
+            data_dir: Root directory for JSON persistence.  Pass ``None``
+                (default) for in-memory-only mode.
+        """
         self._name = name
         self._data_dir = Path(data_dir) / name if data_dir else None
         self._lock = threading.RLock()
@@ -37,15 +44,40 @@ class NamespacedStore:
     # ------------------------------------------------------------------
 
     def get(self, namespace: str, key: str) -> Any | None:
+        """Retrieve a value by namespace and key.
+
+        Args:
+            namespace: Logical partition within the store (e.g. ``"buckets"``).
+            key: Unique identifier within the namespace.
+
+        Returns:
+            The stored value, or ``None`` if the key does not exist.
+        """
         with self._lock:
             return self._data.get(namespace, {}).get(key)
 
     def set(self, namespace: str, key: str, value: Any) -> None:
+        """Store a value, creating the namespace if necessary.
+
+        Args:
+            namespace: Logical partition within the store.
+            key: Unique identifier within the namespace.
+            value: JSON-serializable value to store.
+        """
         with self._lock:
             self._data.setdefault(namespace, {})[key] = value
             self._persist()
 
     def delete(self, namespace: str, key: str) -> bool:
+        """Delete a key from a namespace.
+
+        Args:
+            namespace: Logical partition within the store.
+            key: Key to remove.
+
+        Returns:
+            ``True`` if the key existed and was removed, ``False`` otherwise.
+        """
         with self._lock:
             ns = self._data.get(namespace, {})
             if key not in ns:
@@ -55,18 +87,48 @@ class NamespacedStore:
             return True
 
     def exists(self, namespace: str, key: str) -> bool:
+        """Check whether a key exists in a namespace.
+
+        Args:
+            namespace: Logical partition within the store.
+            key: Key to check.
+
+        Returns:
+            ``True`` if the key exists.
+        """
         with self._lock:
             return key in self._data.get(namespace, {})
 
     def list(self, namespace: str) -> list[Any]:
+        """Return all values in a namespace.
+
+        Args:
+            namespace: Logical partition within the store.
+
+        Returns:
+            A list of all stored values (order is insertion order).
+        """
         with self._lock:
             return list(self._data.get(namespace, {}).values())
 
     def keys(self, namespace: str) -> list[str]:
+        """Return all keys in a namespace.
+
+        Args:
+            namespace: Logical partition within the store.
+
+        Returns:
+            A list of all keys in insertion order.
+        """
         with self._lock:
             return list(self._data.get(namespace, {}).keys())
 
     def clear_namespace(self, namespace: str) -> None:
+        """Remove all entries in a namespace.
+
+        Args:
+            namespace: Logical partition to clear.
+        """
         with self._lock:
             self._data.pop(namespace, None)
             self._persist()

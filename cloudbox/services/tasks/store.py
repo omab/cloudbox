@@ -12,4 +12,9 @@ _store = NamespacedStore("tasks", settings.data_dir)
 
 
 def get_store() -> NamespacedStore:
+    """Return the shared Cloud Tasks store instance.
+
+    Returns:
+        The module-level ``NamespacedStore`` used by all Tasks route handlers.
+    """
     return _store

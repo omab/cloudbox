@@ -37,6 +37,7 @@ def _job_id(full_name: str) -> str:
 
 @app.post("/v1/projects/{project}/locations/{location}/jobs", status_code=200)
 async def create_job(project: str, location: str, request: Request):
+    """Create a new Cloud Scheduler job."""
     body = await request.json()
     name_field = body.get("name", "")
     # Derive job ID from name or generate from body
@@ -69,6 +70,7 @@ async def create_job(project: str, location: str, request: Request):
 
 @app.get("/v1/projects/{project}/locations/{location}/jobs/{job_id}")
 async def get_job(project: str, location: str, job_id: str):
+    """Get a Cloud Scheduler job by ID."""
     full_name = f"projects/{project}/locations/{location}/jobs/{job_id}"
     store = sched_store.get_store()
     data = store.get("jobs", full_name)
@@ -79,6 +81,7 @@ async def get_job(project: str, location: str, job_id: str):
 
 @app.get("/v1/projects/{project}/locations/{location}/jobs")
 async def list_jobs(project: str, location: str, pageSize: int = 100, pageToken: str = ""):
+    """List Cloud Scheduler jobs for a project and location."""
     store = sched_store.get_store()
     prefix = f"projects/{project}/locations/{location}/jobs/"
     items = [JobModel(**v) for v in store.list("jobs") if v["name"].startswith(prefix)]
@@ -90,6 +93,7 @@ async def list_jobs(project: str, location: str, pageSize: int = 100, pageToken:
 
 @app.patch("/v1/projects/{project}/locations/{location}/jobs/{job_id}")
 async def update_job(project: str, location: str, job_id: str, request: Request):
+    """Update fields of an existing Cloud Scheduler job."""
     full_name = f"projects/{project}/locations/{location}/jobs/{job_id}"
     store = sched_store.get_store()
     existing = store.get("jobs", full_name)
@@ -109,6 +113,7 @@ async def update_job(project: str, location: str, job_id: str, request: Request)
 
 @app.delete("/v1/projects/{project}/locations/{location}/jobs/{job_id}", status_code=204)
 async def delete_job(project: str, location: str, job_id: str):
+    """Delete a Cloud Scheduler job."""
     full_name = f"projects/{project}/locations/{location}/jobs/{job_id}"
     store = sched_store.get_store()
     if not store.delete("jobs", full_name):
@@ -151,6 +156,7 @@ async def run_job(project: str, location: str, job_id: str):
 
 @app.post("/v1/projects/{project}/locations/{location}/jobs/{job_id}:pause")
 async def pause_job(project: str, location: str, job_id: str):
+    """Pause a Cloud Scheduler job, preventing future dispatches."""
     full_name = f"projects/{project}/locations/{location}/jobs/{job_id}"
     store = sched_store.get_store()
     data = store.get("jobs", full_name)
@@ -163,6 +169,7 @@ async def pause_job(project: str, location: str, job_id: str):
 
 @app.post("/v1/projects/{project}/locations/{location}/jobs/{job_id}:resume")
 async def resume_job(project: str, location: str, job_id: str):
+    """Resume a paused Cloud Scheduler job."""
     full_name = f"projects/{project}/locations/{location}/jobs/{job_id}"
     store = sched_store.get_store()
     data = store.get("jobs", full_name)
