@@ -33,7 +33,7 @@ Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cl
   - [Cloud Scheduler](#cloud-scheduler-1)
   - [Cloud KMS](#cloud-kms-1)
 - [Documentation](#documentation)
-- [Roadmap](#roadmap)
+- [Roadmap](ROADMAP.md)
 
 ## About this project
 
@@ -625,6 +625,3 @@ shapes, resource field tables, and known limitations.
 | Cloud Spanner | [docs/services/spanner.md](docs/services/spanner.md) |
 | Cloud Logging / Monitoring | [docs/services/logging.md](docs/services/logging.md) |
 
-## Roadmap
-
-- Vertex AI
