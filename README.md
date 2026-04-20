@@ -32,6 +32,7 @@ Run Cloud Storage, Pub/Sub, Firestore, Secret Manager, Cloud Tasks, BigQuery, Cl
   - [Cloud Logging](#cloud-logging-1)
   - [Cloud Scheduler](#cloud-scheduler-1)
   - [Cloud KMS](#cloud-kms-1)
+- [Documentation](#documentation)
 - [Roadmap](#roadmap)
 
 ## About this project
@@ -604,6 +605,25 @@ Legend: ✅ Supported · 🟡 Partial · ❌ Not supported
 | IAM policies | ❌ | |
 | Hardware Security Module (HSM) | ❌ | Not applicable for local dev |
 | External key manager (EKM) | ❌ | Not applicable for local dev |
+
+## Documentation
+
+Per-service reference documentation is in [`docs/`](docs/index.md). Each service has a
+dedicated page covering connection setup, all supported API endpoints with request/response
+shapes, resource field tables, and known limitations.
+
+| Service | Reference |
+|---|---|
+| Cloud Storage | [docs/services/gcs.md](docs/services/gcs.md) |
+| Cloud Pub/Sub | [docs/services/pubsub.md](docs/services/pubsub.md) |
+| Cloud Firestore | [docs/services/firestore.md](docs/services/firestore.md) |
+| Secret Manager | [docs/services/secretmanager.md](docs/services/secretmanager.md) |
+| Cloud Tasks | [docs/services/tasks.md](docs/services/tasks.md) |
+| Cloud Scheduler | [docs/services/scheduler.md](docs/services/scheduler.md) |
+| Cloud KMS | [docs/services/kms.md](docs/services/kms.md) |
+| BigQuery | [docs/services/bigquery.md](docs/services/bigquery.md) |
+| Cloud Spanner | [docs/services/spanner.md](docs/services/spanner.md) |
+| Cloud Logging / Monitoring | [docs/services/logging.md](docs/services/logging.md) |
 
 ## Roadmap
 

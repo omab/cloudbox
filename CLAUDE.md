@@ -269,9 +269,15 @@ Table of unimplemented features with a short reason or workaround.
 Commands to run the examples under examples/{name}/.
 ```
 
-The docs live in `docs/services/` and are linked from `README.md`. Do not add prose that
-duplicates what the code already expresses — focus on the _contract_ (inputs, outputs,
-error codes) and _limitations_ (what the emulator does not do that production does).
+The docs live in `docs/services/` and are indexed at `docs/index.md`. They are linked from
+`README.md`. Do not add prose that duplicates what the code already expresses — focus on the
+_contract_ (inputs, outputs, error codes) and _limitations_ (what the emulator does not do
+that production does).
+
+The `pages/` directory contains the GitHub Pages marketing site (`index.html`, `favicon.svg`,
+`robots.txt`, `sitemap.xml`). It is deployed automatically by `.github/workflows/pages.yml`
+on every push to `main` that touches `pages/**`. Update `pages/` only when changing the
+public-facing website, not for documentation changes.
 
 ## Committing changes
 
