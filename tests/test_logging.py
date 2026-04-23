@@ -887,3 +887,74 @@ def test_update_missing_exclusion_returns_404(logging_client):
 def test_delete_missing_exclusion_returns_404(logging_client):
     r = logging_client.delete(f"/v2/projects/{PROJECT}/exclusions/no-such-excl")
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Combined filter expressions
+# ---------------------------------------------------------------------------
+
+
+def test_filter_combined_log_name_and_severity(logging_client):
+    log_a = f"projects/{PROJECT}/logs/app-a"
+    log_b = f"projects/{PROJECT}/logs/app-b"
+    _write(
+        logging_client,
+        [
+            {"logName": log_a, "severity": "ERROR", "textPayload": "a-error"},
+            {"logName": log_a, "severity": "INFO", "textPayload": "a-info"},
+            {"logName": log_b, "severity": "ERROR", "textPayload": "b-error"},
+        ],
+    )
+    r = _list(logging_client, filter_str=f'logName="{log_a}" severity>=ERROR')
+    entries = r.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["textPayload"] == "a-error"
+
+
+def test_filter_combined_severity_and_resource_type(logging_client):
+    _write(
+        logging_client,
+        [
+            {
+                "logName": LOG_NAME,
+                "severity": "WARNING",
+                "resource": {"type": "gce_instance", "labels": {}},
+                "textPayload": "gce-warn",
+            },
+            {
+                "logName": LOG_NAME,
+                "severity": "WARNING",
+                "resource": {"type": "k8s_container", "labels": {}},
+                "textPayload": "k8s-warn",
+            },
+            {
+                "logName": LOG_NAME,
+                "severity": "INFO",
+                "resource": {"type": "gce_instance", "labels": {}},
+                "textPayload": "gce-info",
+            },
+        ],
+    )
+    r = _list(
+        logging_client,
+        filter_str='severity=WARNING resource.type="gce_instance"',
+    )
+    entries = r.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["textPayload"] == "gce-warn"
+
+
+def test_filter_combined_log_name_and_timestamp(logging_client):
+    log_c = f"projects/{PROJECT}/logs/app-c"
+    _write(
+        logging_client,
+        [
+            {"logName": log_c, "severity": "INFO", "textPayload": "match"},
+            {"logName": LOG_NAME, "severity": "INFO", "textPayload": "wrong-log"},
+        ],
+    )
+    past = "2000-01-01T00:00:00Z"
+    r = _list(logging_client, filter_str=f'logName="{log_c}" timestamp>"{past}"')
+    entries = r.json()["entries"]
+    assert all(e["logName"] == log_c for e in entries)
+    assert len(entries) >= 1

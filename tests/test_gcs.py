@@ -1214,3 +1214,49 @@ def test_hold_fields_in_metadata(gcs_client):
     gcs_client.patch("/storage/v1/b/hold4/o/obj.txt", json={"temporaryHold": True})
     r1 = gcs_client.get("/storage/v1/b/hold4/o/obj.txt")
     assert r1.json()["temporaryHold"] is True
+
+
+# ---------------------------------------------------------------------------
+# CORS 404 paths for missing buckets
+# ---------------------------------------------------------------------------
+
+
+def test_get_cors_missing_bucket_returns_404(gcs_client):
+    r = gcs_client.get("/storage/v1/b/no-such-bucket/cors")
+    assert r.status_code == 404
+
+
+def test_set_cors_missing_bucket_returns_404(gcs_client):
+    r = gcs_client.put(
+        "/storage/v1/b/no-such-bucket/cors",
+        json={"cors": [{"method": ["GET"], "origin": ["*"]}]},
+    )
+    assert r.status_code == 404
+
+
+def test_delete_cors_missing_bucket_returns_404(gcs_client):
+    r = gcs_client.delete("/storage/v1/b/no-such-bucket/cors")
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Retention policy 404 paths for missing buckets
+# ---------------------------------------------------------------------------
+
+
+def test_get_retention_missing_bucket_returns_404(gcs_client):
+    r = gcs_client.get("/storage/v1/b/no-such-bucket/retentionPolicy")
+    assert r.status_code == 404
+
+
+def test_set_retention_missing_bucket_returns_404(gcs_client):
+    r = gcs_client.patch(
+        "/storage/v1/b/no-such-bucket/retentionPolicy",
+        json={"retentionPeriod": "86400"},
+    )
+    assert r.status_code == 404
+
+
+def test_delete_retention_missing_bucket_returns_404(gcs_client):
+    r = gcs_client.delete("/storage/v1/b/no-such-bucket/retentionPolicy")
+    assert r.status_code == 404
