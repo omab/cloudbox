@@ -1,8 +1,7 @@
 """Tests for Cloud Pub/Sub emulator."""
-import asyncio
+
 import base64
 from unittest.mock import AsyncMock, MagicMock, patch
-
 
 PROJECT = "projects/local-project"
 
@@ -88,10 +87,14 @@ def test_push_subscription_dispatches_to_endpoint(pubsub_client):
     push_url = "http://example.com/push"
 
     pubsub_client.put(f"/v1/{topic}")
-    pubsub_client.put(f"/v1/{sub}", json={
-        "name": sub, "topic": topic,
-        "pushConfig": {"pushEndpoint": push_url},
-    })
+    pubsub_client.put(
+        f"/v1/{sub}",
+        json={
+            "name": sub,
+            "topic": topic,
+            "pushConfig": {"pushEndpoint": push_url},
+        },
+    )
 
     data = base64.b64encode(b"push me").decode()
 
@@ -113,10 +116,14 @@ def test_pull_on_push_subscription_returns_400(pubsub_client):
     sub = f"{PROJECT}/subscriptions/push-nopull-sub"
 
     pubsub_client.put(f"/v1/{topic}")
-    pubsub_client.put(f"/v1/{sub}", json={
-        "name": sub, "topic": topic,
-        "pushConfig": {"pushEndpoint": "http://example.com/push"},
-    })
+    pubsub_client.put(
+        f"/v1/{sub}",
+        json={
+            "name": sub,
+            "topic": topic,
+            "pushConfig": {"pushEndpoint": "http://example.com/push"},
+        },
+    )
 
     r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
     assert r.status_code == 400
@@ -130,10 +137,14 @@ def test_push_subscription_not_pullable(pubsub_client):
 
     pubsub_client.put(f"/v1/{topic}")
     pubsub_client.put(f"/v1/{pull_sub}", json={"name": pull_sub, "topic": topic})
-    pubsub_client.put(f"/v1/{push_sub}", json={
-        "name": push_sub, "topic": topic,
-        "pushConfig": {"pushEndpoint": "http://example.com/push"},
-    })
+    pubsub_client.put(
+        f"/v1/{push_sub}",
+        json={
+            "name": push_sub,
+            "topic": topic,
+            "pushConfig": {"pushEndpoint": "http://example.com/push"},
+        },
+    )
 
     data = base64.b64encode(b"fanout").decode()
 
@@ -146,6 +157,7 @@ def test_push_subscription_not_pullable(pubsub_client):
 
     # Push sub has nothing pending in its queue (message moved to unacked for dispatch)
     from cloudbox.services.pubsub.store import queue_depth
+
     assert queue_depth(push_sub) == 0
 
 
@@ -156,7 +168,13 @@ async def test_push_dispatch_acks_message_on_success():
 
     sub_name = f"{PROJECT}/subscriptions/ack-push-sub"
     ps_store.ensure_queue(sub_name)
-    msg = {"data": "dA==", "messageId": "1", "publishTime": "2024-01-01T00:00:00Z", "attributes": {}, "orderingKey": ""}
+    msg = {
+        "data": "dA==",
+        "messageId": "1",
+        "publishTime": "2024-01-01T00:00:00Z",
+        "attributes": {},
+        "orderingKey": "",
+    }
     ps_store.enqueue(sub_name, msg)
     [(ack_id, pulled_msg, _)] = ps_store.pull(sub_name, 1)
 
@@ -173,6 +191,7 @@ async def test_push_dispatch_acks_message_on_success():
 
     # Message should be acked — no longer in unacked
     from cloudbox.services.pubsub.store import _unacked
+
     assert ack_id not in _unacked.get(sub_name, {})
 
 
@@ -183,7 +202,13 @@ async def test_push_dispatch_requeues_message_on_failure():
 
     sub_name = f"{PROJECT}/subscriptions/nack-push-sub"
     ps_store.ensure_queue(sub_name)
-    msg = {"data": "dA==", "messageId": "2", "publishTime": "2024-01-01T00:00:00Z", "attributes": {}, "orderingKey": ""}
+    msg = {
+        "data": "dA==",
+        "messageId": "2",
+        "publishTime": "2024-01-01T00:00:00Z",
+        "attributes": {},
+        "orderingKey": "",
+    }
     ps_store.enqueue(sub_name, msg)
     [(ack_id, pulled_msg, _)] = ps_store.pull(sub_name, 1)
 
@@ -215,16 +240,19 @@ def test_dead_letter_policy_routes_after_max_attempts(pubsub_client):
     pubsub_client.put(f"/v1/{topic}")
     pubsub_client.put(f"/v1/{dlq_topic}")
     pubsub_client.put(f"/v1/{dlq_sub}", json={"name": dlq_sub, "topic": dlq_topic})
-    pubsub_client.put(f"/v1/{sub}", json={
-        "name": sub, "topic": topic,
-        "deadLetterPolicy": {"deadLetterTopic": dlq_topic, "maxDeliveryAttempts": 2},
-    })
+    pubsub_client.put(
+        f"/v1/{sub}",
+        json={
+            "name": sub,
+            "topic": topic,
+            "deadLetterPolicy": {"deadLetterTopic": dlq_topic, "maxDeliveryAttempts": 2},
+        },
+    )
 
     data = base64.b64encode(b"die hard").decode()
     pubsub_client.post(f"/v1/{topic}:publish", json={"messages": [{"data": data}]})
 
     from cloudbox.services.pubsub import store as ps_store
-    import time
 
     # Simulate exceeding maxDeliveryAttempts by force-expiring ack deadlines
     for attempt in range(1, 3):  # attempts 1, 2 → on attempt 3 it should DLQ
@@ -253,10 +281,14 @@ def test_retry_policy_delays_redelivery(pubsub_client):
     sub = f"{PROJECT}/subscriptions/retry-sub"
 
     pubsub_client.put(f"/v1/{topic}")
-    pubsub_client.put(f"/v1/{sub}", json={
-        "name": sub, "topic": topic,
-        "retryPolicy": {"minimumBackoff": "30s", "maximumBackoff": "300s"},
-    })
+    pubsub_client.put(
+        f"/v1/{sub}",
+        json={
+            "name": sub,
+            "topic": topic,
+            "retryPolicy": {"minimumBackoff": "30s", "maximumBackoff": "300s"},
+        },
+    )
 
     data = base64.b64encode(b"retry me").decode()
     pubsub_client.post(f"/v1/{topic}:publish", json={"messages": [{"data": data}]})
@@ -284,10 +316,14 @@ def test_retry_policy_delivers_after_backoff(pubsub_client):
 
     pubsub_client.put(f"/v1/{topic}")
     # Use 0s minimum backoff so backoff expires immediately
-    pubsub_client.put(f"/v1/{sub}", json={
-        "name": sub, "topic": topic,
-        "retryPolicy": {"minimumBackoff": "0s", "maximumBackoff": "0s"},
-    })
+    pubsub_client.put(
+        f"/v1/{sub}",
+        json={
+            "name": sub,
+            "topic": topic,
+            "retryPolicy": {"minimumBackoff": "0s", "maximumBackoff": "0s"},
+        },
+    )
 
     data = base64.b64encode(b"no wait").decode()
     pubsub_client.post(f"/v1/{topic}:publish", json={"messages": [{"data": data}]})
@@ -312,17 +348,22 @@ def test_filter_attribute_equality(pubsub_client):
     sub_all = f"{PROJECT}/subscriptions/filter-all"
 
     pubsub_client.put(f"/v1/{topic}")
-    pubsub_client.put(f"/v1/{sub_red}", json={
-        "name": sub_red, "topic": topic,
-        "filter": 'attributes.color = "red"',
-    })
+    pubsub_client.put(
+        f"/v1/{sub_red}",
+        json={
+            "name": sub_red,
+            "topic": topic,
+            "filter": 'attributes.color = "red"',
+        },
+    )
     pubsub_client.put(f"/v1/{sub_all}", json={"name": sub_all, "topic": topic})
 
     def _publish(color: str) -> None:
         data = base64.b64encode(color.encode()).decode()
-        pubsub_client.post(f"/v1/{topic}:publish", json={
-            "messages": [{"data": data, "attributes": {"color": color}}]
-        })
+        pubsub_client.post(
+            f"/v1/{topic}:publish",
+            json={"messages": [{"data": data, "attributes": {"color": color}}]},
+        )
 
     _publish("red")
     _publish("blue")
@@ -339,20 +380,25 @@ def test_filter_attribute_equality(pubsub_client):
 
 
 def test_filter_has_prefix(pubsub_client):
-    """hasPrefix filter passes messages whose attribute starts with the given prefix."""
+    """HasPrefix filter passes messages whose attribute starts with the given prefix."""
     topic = f"{PROJECT}/topics/prefix-topic"
     sub = f"{PROJECT}/subscriptions/prefix-sub"
 
     pubsub_client.put(f"/v1/{topic}")
-    pubsub_client.put(f"/v1/{sub}", json={
-        "name": sub, "topic": topic,
-        "filter": 'hasPrefix(attributes.env, "prod")',
-    })
+    pubsub_client.put(
+        f"/v1/{sub}",
+        json={
+            "name": sub,
+            "topic": topic,
+            "filter": 'hasPrefix(attributes.env, "prod")',
+        },
+    )
 
     def _publish(env: str) -> None:
-        pubsub_client.post(f"/v1/{topic}:publish", json={
-            "messages": [{"data": "dA==", "attributes": {"env": env}}]
-        })
+        pubsub_client.post(
+            f"/v1/{topic}:publish",
+            json={"messages": [{"data": "dA==", "attributes": {"env": env}}]},
+        )
 
     _publish("prod-us")
     _publish("prod-eu")
@@ -376,7 +422,9 @@ def test_filter_not_and_or():
     assert matches('attributes.color = "red" AND attributes.size = "large"', msg_red_small) is False
     assert matches('attributes.color = "red" OR attributes.color = "blue"', msg_red_large) is True
     assert matches('attributes.color = "red" OR attributes.color = "blue"', msg_blue_large) is True
-    assert matches('attributes.color = "green" OR attributes.color = "blue"', msg_red_large) is False
+    assert (
+        matches('attributes.color = "green" OR attributes.color = "blue"', msg_red_large) is False
+    )
 
 
 def test_ordering_enforces_sequential_delivery(pubsub_client):
@@ -385,16 +433,21 @@ def test_ordering_enforces_sequential_delivery(pubsub_client):
     sub = f"{PROJECT}/subscriptions/ordered-sub"
 
     pubsub_client.put(f"/v1/{topic}")
-    pubsub_client.put(f"/v1/{sub}", json={
-        "name": sub, "topic": topic, "enableMessageOrdering": True,
-    })
+    pubsub_client.put(
+        f"/v1/{sub}",
+        json={
+            "name": sub,
+            "topic": topic,
+            "enableMessageOrdering": True,
+        },
+    )
 
     # Publish 3 messages with the same ordering key
     for i in range(1, 4):
         data = base64.b64encode(str(i).encode()).decode()
-        pubsub_client.post(f"/v1/{topic}:publish", json={
-            "messages": [{"data": data, "orderingKey": "key-A"}]
-        })
+        pubsub_client.post(
+            f"/v1/{topic}:publish", json={"messages": [{"data": data, "orderingKey": "key-A"}]}
+        )
 
     # First pull: should get message 1 only (key-A now in-flight)
     r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 10})
@@ -423,16 +476,21 @@ def test_ordering_different_keys_concurrent(pubsub_client):
     sub = f"{PROJECT}/subscriptions/multikey-sub"
 
     pubsub_client.put(f"/v1/{topic}")
-    pubsub_client.put(f"/v1/{sub}", json={
-        "name": sub, "topic": topic, "enableMessageOrdering": True,
-    })
+    pubsub_client.put(
+        f"/v1/{sub}",
+        json={
+            "name": sub,
+            "topic": topic,
+            "enableMessageOrdering": True,
+        },
+    )
 
     # Publish one message for key-A and one for key-B
     for key in ("key-A", "key-B"):
         data = base64.b64encode(key.encode()).decode()
-        pubsub_client.post(f"/v1/{topic}:publish", json={
-            "messages": [{"data": data, "orderingKey": key}]
-        })
+        pubsub_client.post(
+            f"/v1/{topic}:publish", json={"messages": [{"data": data, "orderingKey": key}]}
+        )
 
     # Both messages should be deliverable in one pull since they have different keys
     r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 10})
@@ -483,7 +541,9 @@ def test_modify_ack_deadline_keeps_message_unacked(pubsub_client):
     ack_id = r.json()["receivedMessages"][0]["ackId"]
 
     # Extend deadline to 60 s
-    pubsub_client.post(f"/v1/{sub}:modifyAckDeadline", json={"ackIds": [ack_id], "ackDeadlineSeconds": 60})
+    pubsub_client.post(
+        f"/v1/{sub}:modifyAckDeadline", json={"ackIds": [ack_id], "ackDeadlineSeconds": 60}
+    )
 
     # Pulling again should return nothing (still unacked, deadline not expired)
     r2 = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
@@ -491,7 +551,7 @@ def test_modify_ack_deadline_keeps_message_unacked(pubsub_client):
 
 
 def test_delivery_attempt_increments_on_requeue(pubsub_client):
-    """deliveryAttempt increases each time a message is requeued after nack."""
+    """DeliveryAttempt increases each time a message is requeued after nack."""
     topic = f"{PROJECT}/topics/retry-attempt-topic"
     sub = f"{PROJECT}/subscriptions/retry-attempt-sub"
     pubsub_client.put(f"/v1/{topic}")
@@ -530,12 +590,14 @@ def test_delete_topic_removes_subscriptions(pubsub_client):
 def test_filter_invalid_expression_is_fail_open():
     """A malformed filter expression should be treated as a match (fail-open)."""
     from cloudbox.services.pubsub.filter import matches
+
     msg = {"attributes": {"color": "red"}}
     assert matches("this is not valid filter syntax %%", msg) is True
 
 
 def test_filter_hasprefix():
     from cloudbox.services.pubsub.filter import matches
+
     msg_match = {"attributes": {"env": "production-us"}}
     msg_no = {"attributes": {"env": "staging"}}
     assert matches('hasPrefix(attributes.env, "production")', msg_match) is True
@@ -544,6 +606,7 @@ def test_filter_hasprefix():
 
 def test_filter_unsupported_operator_is_fail_open():
     from cloudbox.services.pubsub.filter import matches
+
     # The parser raises on unsupported operators → fail-open
     msg = {"attributes": {"x": "1"}}
     assert matches('attributes.x != "1"', msg) is True
@@ -551,6 +614,7 @@ def test_filter_unsupported_operator_is_fail_open():
 
 def test_filter_parenthesized_expression():
     from cloudbox.services.pubsub.filter import matches
+
     msg = {"attributes": {"a": "1", "b": "2"}}
     assert matches('(attributes.a = "1" OR attributes.b = "3") AND attributes.b = "2"', msg) is True
 
@@ -562,6 +626,7 @@ def test_filter_parenthesized_expression():
 
 def test_create_snapshot_missing_subscription_returns_none():
     from cloudbox.services.pubsub.store import create_snapshot
+
     result = create_snapshot("projects/p/snapshots/s", "projects/p/subscriptions/nonexistent")
     assert result is None
 
@@ -569,6 +634,7 @@ def test_create_snapshot_missing_subscription_returns_none():
 def test_retained_count_and_unacked_count(pubsub_client):
     """Exercise retained_count and unacked_count helpers."""
     from cloudbox.services.pubsub.store import retained_count, unacked_count
+
     topic = f"{PROJECT}/topics/cnt-topic"
     sub = f"{PROJECT}/subscriptions/cnt-sub"
 
@@ -576,9 +642,9 @@ def test_retained_count_and_unacked_count(pubsub_client):
     pubsub_client.put(f"/v1/{sub}", json={"name": sub, "topic": topic})
 
     # Publish a message
-    pubsub_client.post(f"/v1/{topic}:publish", json={
-        "messages": [{"data": base64.b64encode(b"hi").decode()}]
-    })
+    pubsub_client.post(
+        f"/v1/{topic}:publish", json={"messages": [{"data": base64.b64encode(b"hi").decode()}]}
+    )
 
     # After publish, topic log should have 1 retained message
     assert retained_count(topic) == 1
@@ -587,3 +653,54 @@ def test_retained_count_and_unacked_count(pubsub_client):
     r = pubsub_client.post(f"/v1/{sub}:pull", json={"maxMessages": 1})
     assert r.status_code == 200
     assert unacked_count(sub) == 1
+
+
+# ---------------------------------------------------------------------------
+# Missing-resource 404 / 400 paths
+# ---------------------------------------------------------------------------
+
+
+def test_delete_missing_topic_returns_404(pubsub_client):
+    r = pubsub_client.delete(f"/v1/{PROJECT}/topics/no-such-topic")
+    assert r.status_code == 404
+
+
+def test_delete_missing_subscription_returns_404(pubsub_client):
+    r = pubsub_client.delete(f"/v1/{PROJECT}/subscriptions/no-such-sub")
+    assert r.status_code == 404
+
+
+def test_create_subscription_missing_topic_returns_404(pubsub_client):
+    sub = f"{PROJECT}/subscriptions/orphan-sub"
+    r = pubsub_client.put(
+        f"/v1/{sub}",
+        json={"name": sub, "topic": f"{PROJECT}/topics/ghost-topic"},
+    )
+    assert r.status_code == 404
+
+
+def test_seek_missing_subscription_returns_404(pubsub_client):
+    r = pubsub_client.post(
+        f"/v1/{PROJECT}/subscriptions/no-such-sub:seek",
+        json={"time": "2020-01-01T00:00:00Z"},
+    )
+    assert r.status_code == 404
+
+
+def test_seek_without_time_or_snapshot_returns_400(pubsub_client):
+    topic = f"{PROJECT}/topics/seek-topic"
+    sub = f"{PROJECT}/subscriptions/seek-sub"
+    pubsub_client.put(f"/v1/{topic}")
+    pubsub_client.put(f"/v1/{sub}", json={"name": sub, "topic": topic})
+    r = pubsub_client.post(f"/v1/{sub}:seek", json={})
+    assert r.status_code == 400
+
+
+def test_get_missing_schema_returns_404(pubsub_client):
+    r = pubsub_client.get(f"/v1/{PROJECT}/schemas/no-such-schema")
+    assert r.status_code == 404
+
+
+def test_delete_missing_schema_returns_404(pubsub_client):
+    r = pubsub_client.delete(f"/v1/{PROJECT}/schemas/no-such-schema")
+    assert r.status_code == 404

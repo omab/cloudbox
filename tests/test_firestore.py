@@ -164,7 +164,7 @@ def test_patch_creates_document_if_missing(firestore_client):
 
 
 def test_commit_field_mask(firestore_client):
-    """updateMask in a commit write only touches the listed fields."""
+    """UpdateMask in a commit write only touches the listed fields."""
     firestore_client.post(
         f"/v1/{DOCS}/accounts",
         params={"documentId": "acc1"},
@@ -175,13 +175,15 @@ def test_commit_field_mask(firestore_client):
         f"/v1/{DB}:commit",
         json={
             "transaction": txn,
-            "writes": [{
-                "update": {
-                    "name": f"{DOCS}/accounts/acc1",
-                    "fields": {"balance": {"integerValue": "200"}},
-                },
-                "updateMask": {"fieldPaths": ["balance"]},
-            }],
+            "writes": [
+                {
+                    "update": {
+                        "name": f"{DOCS}/accounts/acc1",
+                        "fields": {"balance": {"integerValue": "200"}},
+                    },
+                    "updateMask": {"fieldPaths": ["balance"]},
+                }
+            ],
         },
     )
     r = firestore_client.get(f"/v1/{DOCS}/accounts/acc1")
@@ -284,8 +286,20 @@ def test_query_composite_or_filter(firestore_client):
                     "compositeFilter": {
                         "op": "OR",
                         "filters": [
-                            {"fieldFilter": {"field": {"fieldPath": "color"}, "op": "EQUAL", "value": {"stringValue": "red"}}},
-                            {"fieldFilter": {"field": {"fieldPath": "color"}, "op": "EQUAL", "value": {"stringValue": "yellow"}}},
+                            {
+                                "fieldFilter": {
+                                    "field": {"fieldPath": "color"},
+                                    "op": "EQUAL",
+                                    "value": {"stringValue": "red"},
+                                }
+                            },
+                            {
+                                "fieldFilter": {
+                                    "field": {"fieldPath": "color"},
+                                    "op": "EQUAL",
+                                    "value": {"stringValue": "yellow"},
+                                }
+                            },
                         ],
                     }
                 },
@@ -300,7 +314,9 @@ def test_query_array_contains(firestore_client):
         firestore_client.post(
             f"/v1/{DOCS}/tagged",
             params={"documentId": name},
-            json={"fields": {"tags": {"arrayValue": {"values": [{"stringValue": t} for t in tags]}}}},
+            json={
+                "fields": {"tags": {"arrayValue": {"values": [{"stringValue": t} for t in tags]}}}
+            },
         )
     r = firestore_client.post(
         f"/v1/{DOCS}:runQuery",
@@ -336,10 +352,14 @@ def test_query_in_filter(firestore_client):
                     "fieldFilter": {
                         "field": {"fieldPath": "status"},
                         "op": "IN",
-                        "value": {"arrayValue": {"values": [
-                            {"stringValue": "active"},
-                            {"stringValue": "pending"},
-                        ]}},
+                        "value": {
+                            "arrayValue": {
+                                "values": [
+                                    {"stringValue": "active"},
+                                    {"stringValue": "pending"},
+                                ]
+                            }
+                        },
                     }
                 },
             }
@@ -394,7 +414,7 @@ def test_run_query_nested_collection(firestore_client):
         json={"fields": {"label": {"stringValue": "important"}}},
     )
     r = firestore_client.post(
-        f"/v1/projects/local-project/databases/(default)/documents/items/item1/documents:runQuery",
+        "/v1/projects/local-project/databases/(default)/documents/items/item1/documents:runQuery",
         json={"structuredQuery": {"from": [{"collectionId": "tags"}]}},
     )
     assert r.status_code == 200
@@ -410,7 +430,7 @@ def test_post_even_path_returns_400(firestore_client):
 
 
 def test_commit_delete_field_from_update_mask(firestore_client):
-    """updateMask can remove a field by listing it but not including it in the doc."""
+    """UpdateMask can remove a field by listing it but not including it in the doc."""
     firestore_client.post(
         f"/v1/{DOCS}/items",
         params={"documentId": "del-field-doc"},
@@ -450,11 +470,15 @@ def test_transform_increment_integer(firestore_client):
     r = firestore_client.post(
         f"/v1/{DB}:commit",
         json={
-            "writes": [{
-                "update": {"name": f"{DOCS}/counters/c1", "fields": {}},
-                "updateMask": {"fieldPaths": []},
-                "updateTransforms": [{"fieldPath": "views", "increment": {"integerValue": "5"}}],
-            }]
+            "writes": [
+                {
+                    "update": {"name": f"{DOCS}/counters/c1", "fields": {}},
+                    "updateMask": {"fieldPaths": []},
+                    "updateTransforms": [
+                        {"fieldPath": "views", "increment": {"integerValue": "5"}}
+                    ],
+                }
+            ]
         },
     )
     assert r.status_code == 200
@@ -471,11 +495,13 @@ def test_transform_increment_creates_field(firestore_client):
     firestore_client.post(
         f"/v1/{DB}:commit",
         json={
-            "writes": [{
-                "update": {"name": f"{DOCS}/counters/c2", "fields": {}},
-                "updateMask": {"fieldPaths": []},
-                "updateTransforms": [{"fieldPath": "hits", "increment": {"integerValue": "3"}}],
-            }]
+            "writes": [
+                {
+                    "update": {"name": f"{DOCS}/counters/c2", "fields": {}},
+                    "updateMask": {"fieldPaths": []},
+                    "updateTransforms": [{"fieldPath": "hits", "increment": {"integerValue": "3"}}],
+                }
+            ]
         },
     )
     doc = firestore_client.get(f"/v1/{DOCS}/counters/c2").json()
@@ -491,11 +517,13 @@ def test_transform_increment_double(firestore_client):
     firestore_client.post(
         f"/v1/{DB}:commit",
         json={
-            "writes": [{
-                "update": {"name": f"{DOCS}/metrics/m1", "fields": {}},
-                "updateMask": {"fieldPaths": []},
-                "updateTransforms": [{"fieldPath": "score", "increment": {"doubleValue": 0.5}}],
-            }]
+            "writes": [
+                {
+                    "update": {"name": f"{DOCS}/metrics/m1", "fields": {}},
+                    "updateMask": {"fieldPaths": []},
+                    "updateTransforms": [{"fieldPath": "score", "increment": {"doubleValue": 0.5}}],
+                }
+            ]
         },
     )
     doc = firestore_client.get(f"/v1/{DOCS}/metrics/m1").json()
@@ -511,11 +539,15 @@ def test_transform_set_to_server_value(firestore_client):
     firestore_client.post(
         f"/v1/{DB}:commit",
         json={
-            "writes": [{
-                "update": {"name": f"{DOCS}/events/e1", "fields": {}},
-                "updateMask": {"fieldPaths": []},
-                "updateTransforms": [{"fieldPath": "updatedAt", "setToServerValue": "REQUEST_TIME"}],
-            }]
+            "writes": [
+                {
+                    "update": {"name": f"{DOCS}/events/e1", "fields": {}},
+                    "updateMask": {"fieldPaths": []},
+                    "updateTransforms": [
+                        {"fieldPath": "updatedAt", "setToServerValue": "REQUEST_TIME"}
+                    ],
+                }
+            ]
         },
     )
     doc = firestore_client.get(f"/v1/{DOCS}/events/e1").json()
@@ -531,14 +563,20 @@ def test_transform_append_missing_elements(firestore_client):
     firestore_client.post(
         f"/v1/{DB}:commit",
         json={
-            "writes": [{
-                "update": {"name": f"{DOCS}/lists/l1", "fields": {}},
-                "updateMask": {"fieldPaths": []},
-                "updateTransforms": [{
-                    "fieldPath": "tags",
-                    "appendMissingElements": {"values": [{"stringValue": "a"}, {"stringValue": "b"}]},
-                }],
-            }]
+            "writes": [
+                {
+                    "update": {"name": f"{DOCS}/lists/l1", "fields": {}},
+                    "updateMask": {"fieldPaths": []},
+                    "updateTransforms": [
+                        {
+                            "fieldPath": "tags",
+                            "appendMissingElements": {
+                                "values": [{"stringValue": "a"}, {"stringValue": "b"}]
+                            },
+                        }
+                    ],
+                }
+            ]
         },
     )
     doc = firestore_client.get(f"/v1/{DOCS}/lists/l1").json()
@@ -550,21 +588,35 @@ def test_transform_remove_all_from_array(firestore_client):
     firestore_client.post(
         f"/v1/{DOCS}/lists",
         params={"documentId": "l2"},
-        json={"fields": {"tags": {"arrayValue": {"values": [
-            {"stringValue": "a"}, {"stringValue": "b"}, {"stringValue": "a"},
-        ]}}}},
+        json={
+            "fields": {
+                "tags": {
+                    "arrayValue": {
+                        "values": [
+                            {"stringValue": "a"},
+                            {"stringValue": "b"},
+                            {"stringValue": "a"},
+                        ]
+                    }
+                }
+            }
+        },
     )
     firestore_client.post(
         f"/v1/{DB}:commit",
         json={
-            "writes": [{
-                "update": {"name": f"{DOCS}/lists/l2", "fields": {}},
-                "updateMask": {"fieldPaths": []},
-                "updateTransforms": [{
-                    "fieldPath": "tags",
-                    "removeAllFromArray": {"values": [{"stringValue": "a"}]},
-                }],
-            }]
+            "writes": [
+                {
+                    "update": {"name": f"{DOCS}/lists/l2", "fields": {}},
+                    "updateMask": {"fieldPaths": []},
+                    "updateTransforms": [
+                        {
+                            "fieldPath": "tags",
+                            "removeAllFromArray": {"values": [{"stringValue": "a"}]},
+                        }
+                    ],
+                }
+            ]
         },
     )
     doc = firestore_client.get(f"/v1/{DOCS}/lists/l2").json()
@@ -581,11 +633,15 @@ def test_transform_nested_field_path(firestore_client):
     firestore_client.post(
         f"/v1/{DB}:commit",
         json={
-            "writes": [{
-                "update": {"name": f"{DOCS}/nested/n1", "fields": {}},
-                "updateMask": {"fieldPaths": []},
-                "updateTransforms": [{"fieldPath": "stats.count", "increment": {"integerValue": "7"}}],
-            }]
+            "writes": [
+                {
+                    "update": {"name": f"{DOCS}/nested/n1", "fields": {}},
+                    "updateMask": {"fieldPaths": []},
+                    "updateTransforms": [
+                        {"fieldPath": "stats.count", "increment": {"integerValue": "7"}}
+                    ],
+                }
+            ]
         },
     )
     doc = firestore_client.get(f"/v1/{DOCS}/nested/n1").json()
@@ -604,10 +660,12 @@ def _seed_scores(firestore_client, collection, docs):
         firestore_client.post(
             f"/v1/{DOCS}/{collection}",
             params={"documentId": doc_id},
-            json={"fields": {
-                "name": {"stringValue": doc_id},
-                "score": {"integerValue": str(score)},
-            }},
+            json={
+                "fields": {
+                    "name": {"stringValue": doc_id},
+                    "score": {"integerValue": str(score)},
+                }
+            },
         )
 
 
@@ -776,10 +834,12 @@ def _seed_cursor_col(firestore_client, collection, items):
         firestore_client.post(
             f"/v1/{DOCS}/{collection}",
             params={"documentId": doc_id},
-            json={"fields": {
-                "score": {"integerValue": str(score)},
-                "name": {"stringValue": doc_id},
-            }},
+            json={
+                "fields": {
+                    "score": {"integerValue": str(score)},
+                    "name": {"stringValue": doc_id},
+                }
+            },
         )
 
 
@@ -788,82 +848,100 @@ def _scores(results):
 
 
 def test_start_at_inclusive(firestore_client):
-    """startAt with before=True: include the cursor document."""
+    """StartAt with before=True: include the cursor document."""
     _seed_cursor_col(firestore_client, "cur1", [("a", 10), ("b", 20), ("c", 30), ("d", 40)])
-    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
-        "structuredQuery": {
-            "from": [{"collectionId": "cur1"}],
-            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
-            "startAt": {"values": [{"integerValue": "20"}], "before": True},
-        }
-    })
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "cur1"}],
+                "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+                "startAt": {"values": [{"integerValue": "20"}], "before": True},
+            }
+        },
+    )
     assert r.status_code == 200
     assert _scores(r.json()) == [20, 30, 40]
 
 
 def test_start_after_exclusive(firestore_client):
-    """startAt with before=False: exclude the cursor document (startAfter)."""
+    """StartAt with before=False: exclude the cursor document (startAfter)."""
     _seed_cursor_col(firestore_client, "cur2", [("a", 10), ("b", 20), ("c", 30), ("d", 40)])
-    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
-        "structuredQuery": {
-            "from": [{"collectionId": "cur2"}],
-            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
-            "startAt": {"values": [{"integerValue": "20"}], "before": False},
-        }
-    })
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "cur2"}],
+                "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+                "startAt": {"values": [{"integerValue": "20"}], "before": False},
+            }
+        },
+    )
     assert _scores(r.json()) == [30, 40]
 
 
 def test_end_before_exclusive(firestore_client):
-    """endAt with before=True: exclude the cursor document (endBefore)."""
+    """EndAt with before=True: exclude the cursor document (endBefore)."""
     _seed_cursor_col(firestore_client, "cur3", [("a", 10), ("b", 20), ("c", 30), ("d", 40)])
-    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
-        "structuredQuery": {
-            "from": [{"collectionId": "cur3"}],
-            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
-            "endAt": {"values": [{"integerValue": "30"}], "before": True},
-        }
-    })
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "cur3"}],
+                "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+                "endAt": {"values": [{"integerValue": "30"}], "before": True},
+            }
+        },
+    )
     assert _scores(r.json()) == [10, 20]
 
 
 def test_end_at_inclusive(firestore_client):
-    """endAt with before=False: include the cursor document."""
+    """EndAt with before=False: include the cursor document."""
     _seed_cursor_col(firestore_client, "cur4", [("a", 10), ("b", 20), ("c", 30), ("d", 40)])
-    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
-        "structuredQuery": {
-            "from": [{"collectionId": "cur4"}],
-            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
-            "endAt": {"values": [{"integerValue": "30"}], "before": False},
-        }
-    })
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "cur4"}],
+                "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+                "endAt": {"values": [{"integerValue": "30"}], "before": False},
+            }
+        },
+    )
     assert _scores(r.json()) == [10, 20, 30]
 
 
 def test_start_at_and_end_at_window(firestore_client):
     """Both cursors together define a window."""
     _seed_cursor_col(firestore_client, "cur5", [(f"d{i}", i * 10) for i in range(6)])
-    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
-        "structuredQuery": {
-            "from": [{"collectionId": "cur5"}],
-            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
-            "startAt": {"values": [{"integerValue": "10"}], "before": True},
-            "endAt":   {"values": [{"integerValue": "30"}], "before": False},
-        }
-    })
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "cur5"}],
+                "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+                "startAt": {"values": [{"integerValue": "10"}], "before": True},
+                "endAt": {"values": [{"integerValue": "30"}], "before": False},
+            }
+        },
+    )
     assert _scores(r.json()) == [10, 20, 30]
 
 
 def test_cursor_with_descending_order(firestore_client):
     """Cursors respect DESCENDING sort direction."""
     _seed_cursor_col(firestore_client, "cur6", [("a", 10), ("b", 20), ("c", 30), ("d", 40)])
-    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
-        "structuredQuery": {
-            "from": [{"collectionId": "cur6"}],
-            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "DESCENDING"}],
-            "startAt": {"values": [{"integerValue": "30"}], "before": True},
-        }
-    })
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "cur6"}],
+                "orderBy": [{"field": {"fieldPath": "score"}, "direction": "DESCENDING"}],
+                "startAt": {"values": [{"integerValue": "30"}], "before": True},
+            }
+        },
+    )
     # Descending order: 40, 30, 20, 10. startAt 30 inclusive → 30, 20, 10
     assert _scores(r.json()) == [30, 20, 10]
 
@@ -872,26 +950,32 @@ def test_cursor_with_limit(firestore_client):
     """Cursors compose correctly with LIMIT for page-by-page iteration."""
     _seed_cursor_col(firestore_client, "cur7", [(f"d{i}", i * 5) for i in range(8)])
     # Page 1: first 3 docs
-    r1 = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
-        "structuredQuery": {
-            "from": [{"collectionId": "cur7"}],
-            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
-            "limit": 3,
-        }
-    })
+    r1 = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "cur7"}],
+                "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+                "limit": 3,
+            }
+        },
+    )
     page1 = _scores(r1.json())
     assert page1 == [0, 5, 10]
 
     # Page 2: startAfter the last doc on page 1
     last_score = page1[-1]
-    r2 = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
-        "structuredQuery": {
-            "from": [{"collectionId": "cur7"}],
-            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
-            "startAt": {"values": [{"integerValue": str(last_score)}], "before": False},
-            "limit": 3,
-        }
-    })
+    r2 = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "cur7"}],
+                "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+                "startAt": {"values": [{"integerValue": str(last_score)}], "before": False},
+                "limit": 3,
+            }
+        },
+    )
     assert _scores(r2.json()) == [15, 20, 25]
 
 
@@ -904,14 +988,19 @@ def test_transform_multiple_in_one_write(firestore_client):
     firestore_client.post(
         f"/v1/{DB}:commit",
         json={
-            "writes": [{
-                "update": {"name": f"{DOCS}/multi/mx1", "fields": {"label": {"stringValue": "new"}}},
-                "updateMask": {"fieldPaths": ["label"]},
-                "updateTransforms": [
-                    {"fieldPath": "views", "increment": {"integerValue": "9"}},
-                    {"fieldPath": "updatedAt", "setToServerValue": "REQUEST_TIME"},
-                ],
-            }]
+            "writes": [
+                {
+                    "update": {
+                        "name": f"{DOCS}/multi/mx1",
+                        "fields": {"label": {"stringValue": "new"}},
+                    },
+                    "updateMask": {"fieldPaths": ["label"]},
+                    "updateTransforms": [
+                        {"fieldPath": "views", "increment": {"integerValue": "9"}},
+                        {"fieldPath": "updatedAt", "setToServerValue": "REQUEST_TIME"},
+                    ],
+                }
+            ]
         },
     )
     doc = firestore_client.get(f"/v1/{DOCS}/multi/mx1").json()
@@ -926,7 +1015,7 @@ def test_transform_multiple_in_one_write(firestore_client):
 
 
 def test_batch_write_creates_and_updates(firestore_client):
-    """batchWrite can create multiple documents in one call."""
+    """BatchWrite can create multiple documents in one call."""
     r = firestore_client.post(
         f"/v1/{DB}:batchWrite",
         json={
@@ -958,7 +1047,7 @@ def test_batch_write_creates_and_updates(firestore_client):
 
 
 def test_batch_write_delete(firestore_client):
-    """batchWrite can delete documents."""
+    """BatchWrite can delete documents."""
     firestore_client.post(
         f"/v1/{DOCS}/bwdel",
         params={"documentId": "d1"},
@@ -1002,11 +1091,13 @@ def test_batch_write_partial_failure(firestore_client):
     assert body["status"][0]["code"] != 0
     # second write succeeded independently
     assert body["status"][1]["code"] == 0
-    assert firestore_client.get(f"/v1/{DOCS}/bwpf/doc4").json()["fields"]["ok"]["booleanValue"] is True
+    assert (
+        firestore_client.get(f"/v1/{DOCS}/bwpf/doc4").json()["fields"]["ok"]["booleanValue"] is True
+    )
 
 
 def test_batch_write_empty(firestore_client):
-    """batchWrite with no writes returns empty results."""
+    """BatchWrite with no writes returns empty results."""
     r = firestore_client.post(f"/v1/{DB}:batchWrite", json={"writes": []})
     assert r.status_code == 200
     body = r.json()
@@ -1024,19 +1115,24 @@ def test_select_single_field(firestore_client):
         firestore_client.post(
             f"/v1/{DOCS}/proj",
             params={"documentId": f"p{i}"},
-            json={"fields": {
-                "name": {"stringValue": f"item{i}"},
-                "price": {"integerValue": str(i * 10)},
-                "hidden": {"stringValue": "secret"},
-            }},
+            json={
+                "fields": {
+                    "name": {"stringValue": f"item{i}"},
+                    "price": {"integerValue": str(i * 10)},
+                    "hidden": {"stringValue": "secret"},
+                }
+            },
         )
-    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
-        "structuredQuery": {
-            "from": [{"collectionId": "proj"}],
-            "select": {"fields": [{"fieldPath": "name"}]},
-            "orderBy": [{"field": {"fieldPath": "name"}, "direction": "ASCENDING"}],
-        }
-    })
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "proj"}],
+                "select": {"fields": [{"fieldPath": "name"}]},
+                "orderBy": [{"field": {"fieldPath": "name"}, "direction": "ASCENDING"}],
+            }
+        },
+    )
     docs = [row["document"] for row in r.json() if "document" in row]
     assert len(docs) == 3
     for doc in docs:
@@ -1049,18 +1145,23 @@ def test_select_multiple_fields(firestore_client):
     firestore_client.post(
         f"/v1/{DOCS}/projm",
         params={"documentId": "m1"},
-        json={"fields": {
-            "a": {"stringValue": "A"},
-            "b": {"integerValue": "2"},
-            "c": {"booleanValue": True},
-        }},
+        json={
+            "fields": {
+                "a": {"stringValue": "A"},
+                "b": {"integerValue": "2"},
+                "c": {"booleanValue": True},
+            }
+        },
     )
-    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
-        "structuredQuery": {
-            "from": [{"collectionId": "projm"}],
-            "select": {"fields": [{"fieldPath": "a"}, {"fieldPath": "c"}]},
-        }
-    })
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "projm"}],
+                "select": {"fields": [{"fieldPath": "a"}, {"fieldPath": "c"}]},
+            }
+        },
+    )
     docs = [row["document"] for row in r.json() if "document" in row]
     assert len(docs) == 1
     fields = docs[0]["fields"]
@@ -1075,25 +1176,310 @@ def test_select_preserves_filters_and_order(firestore_client):
         firestore_client.post(
             f"/v1/{DOCS}/projf",
             params={"documentId": f"f{i}"},
-            json={"fields": {
-                "name": {"stringValue": name},
-                "score": {"integerValue": str(score)},
-            }},
+            json={
+                "fields": {
+                    "name": {"stringValue": name},
+                    "score": {"integerValue": str(score)},
+                }
+            },
         )
-    r = firestore_client.post(f"/v1/{DOCS}:runQuery", json={
-        "structuredQuery": {
-            "from": [{"collectionId": "projf"}],
-            "where": {"fieldFilter": {
-                "field": {"fieldPath": "score"},
-                "op": "GREATER_THAN",
-                "value": {"integerValue": "6"},
-            }},
-            "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
-            "select": {"fields": [{"fieldPath": "name"}]},
-        }
-    })
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "projf"}],
+                "where": {
+                    "fieldFilter": {
+                        "field": {"fieldPath": "score"},
+                        "op": "GREATER_THAN",
+                        "value": {"integerValue": "6"},
+                    }
+                },
+                "orderBy": [{"field": {"fieldPath": "score"}, "direction": "ASCENDING"}],
+                "select": {"fields": [{"fieldPath": "name"}]},
+            }
+        },
+    )
     docs = [row["document"] for row in r.json() if "document" in row]
     names = [d["fields"]["name"]["stringValue"] for d in docs]
     assert names == ["gamma", "beta"]
     for doc in docs:
         assert "score" not in doc["fields"]
+
+
+# ---------------------------------------------------------------------------
+# Additional filter operators
+# ---------------------------------------------------------------------------
+
+
+def test_filter_not_equal(firestore_client):
+    for i, name in enumerate(("alpha", "beta", "gamma")):
+        firestore_client.post(
+            f"/v1/{DOCS}/neq",
+            params={"documentId": f"d{i}"},
+            json={"fields": {"name": {"stringValue": name}}},
+        )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "neq"}],
+                "where": {
+                    "fieldFilter": {
+                        "field": {"fieldPath": "name"},
+                        "op": "NOT_EQUAL",
+                        "value": {"stringValue": "beta"},
+                    }
+                },
+            }
+        },
+    )
+    docs = [row["document"] for row in r.json() if "document" in row]
+    names = {d["fields"]["name"]["stringValue"] for d in docs}
+    assert "beta" not in names
+    assert {"alpha", "gamma"}.issubset(names)
+
+
+def test_filter_less_than_or_equal(firestore_client):
+    for i in range(5):
+        firestore_client.post(
+            f"/v1/{DOCS}/lte",
+            params={"documentId": f"d{i}"},
+            json={"fields": {"score": {"integerValue": str(i * 10)}}},
+        )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "lte"}],
+                "where": {
+                    "fieldFilter": {
+                        "field": {"fieldPath": "score"},
+                        "op": "LESS_THAN_OR_EQUAL",
+                        "value": {"integerValue": "20"},
+                    }
+                },
+            }
+        },
+    )
+    docs = [row["document"] for row in r.json() if "document" in row]
+    scores = [int(d["fields"]["score"]["integerValue"]) for d in docs]
+    assert all(s <= 20 for s in scores)
+    assert len(docs) == 3
+
+
+def test_filter_greater_than_or_equal(firestore_client):
+    for i in range(5):
+        firestore_client.post(
+            f"/v1/{DOCS}/gte",
+            params={"documentId": f"d{i}"},
+            json={"fields": {"score": {"integerValue": str(i * 10)}}},
+        )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "gte"}],
+                "where": {
+                    "fieldFilter": {
+                        "field": {"fieldPath": "score"},
+                        "op": "GREATER_THAN_OR_EQUAL",
+                        "value": {"integerValue": "30"},
+                    }
+                },
+            }
+        },
+    )
+    docs = [row["document"] for row in r.json() if "document" in row]
+    scores = [int(d["fields"]["score"]["integerValue"]) for d in docs]
+    assert all(s >= 30 for s in scores)
+    assert len(docs) == 2
+
+
+def test_filter_not_in(firestore_client):
+    for i, color in enumerate(("red", "green", "blue", "yellow")):
+        firestore_client.post(
+            f"/v1/{DOCS}/notin",
+            params={"documentId": f"d{i}"},
+            json={"fields": {"color": {"stringValue": color}}},
+        )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "notin"}],
+                "where": {
+                    "fieldFilter": {
+                        "field": {"fieldPath": "color"},
+                        "op": "NOT_IN",
+                        "value": {
+                            "arrayValue": {
+                                "values": [
+                                    {"stringValue": "red"},
+                                    {"stringValue": "blue"},
+                                ]
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    )
+    docs = [row["document"] for row in r.json() if "document" in row]
+    colors = {d["fields"]["color"]["stringValue"] for d in docs}
+    assert colors == {"green", "yellow"}
+
+
+def test_filter_array_contains_any(firestore_client):
+    for i, tags in enumerate([["a", "b"], ["c", "d"], ["a", "c"]]):
+        firestore_client.post(
+            f"/v1/{DOCS}/aca",
+            params={"documentId": f"d{i}"},
+            json={
+                "fields": {"tags": {"arrayValue": {"values": [{"stringValue": t} for t in tags]}}}
+            },
+        )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "aca"}],
+                "where": {
+                    "fieldFilter": {
+                        "field": {"fieldPath": "tags"},
+                        "op": "ARRAY_CONTAINS_ANY",
+                        "value": {
+                            "arrayValue": {
+                                "values": [
+                                    {"stringValue": "b"},
+                                    {"stringValue": "d"},
+                                ]
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    )
+    docs = [row["document"] for row in r.json() if "document" in row]
+    assert len(docs) == 2
+
+
+def test_filter_is_null(firestore_client):
+    firestore_client.post(
+        f"/v1/{DOCS}/nullcol",
+        params={"documentId": "has-null"},
+        json={"fields": {"val": {"nullValue": None}}},
+    )
+    firestore_client.post(
+        f"/v1/{DOCS}/nullcol",
+        params={"documentId": "has-value"},
+        json={"fields": {"val": {"stringValue": "something"}}},
+    )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "nullcol"}],
+                "where": {
+                    "unaryFilter": {
+                        "field": {"fieldPath": "val"},
+                        "op": "IS_NULL",
+                    }
+                },
+            }
+        },
+    )
+    docs = [row["document"] for row in r.json() if "document" in row]
+    assert len(docs) == 1
+    assert docs[0]["name"].endswith("/has-null")
+
+
+def test_filter_is_not_null(firestore_client):
+    firestore_client.post(
+        f"/v1/{DOCS}/notnullcol",
+        params={"documentId": "with-null"},
+        json={"fields": {"val": {"nullValue": None}}},
+    )
+    firestore_client.post(
+        f"/v1/{DOCS}/notnullcol",
+        params={"documentId": "with-value"},
+        json={"fields": {"val": {"integerValue": "42"}}},
+    )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "notnullcol"}],
+                "where": {
+                    "unaryFilter": {
+                        "field": {"fieldPath": "val"},
+                        "op": "IS_NOT_NULL",
+                    }
+                },
+            }
+        },
+    )
+    docs = [row["document"] for row in r.json() if "document" in row]
+    assert len(docs) == 1
+    assert docs[0]["name"].endswith("/with-value")
+
+
+def test_filter_is_nan(firestore_client):
+    firestore_client.post(
+        f"/v1/{DOCS}/nancol",
+        params={"documentId": "nan-doc"},
+        json={"fields": {"val": {"doubleValue": "NaN"}}},
+    )
+    firestore_client.post(
+        f"/v1/{DOCS}/nancol",
+        params={"documentId": "num-doc"},
+        json={"fields": {"val": {"doubleValue": 3.14}}},
+    )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "nancol"}],
+                "where": {
+                    "unaryFilter": {
+                        "field": {"fieldPath": "val"},
+                        "op": "IS_NAN",
+                    }
+                },
+            }
+        },
+    )
+    docs = [row["document"] for row in r.json() if "document" in row]
+    assert len(docs) == 1
+    assert docs[0]["name"].endswith("/nan-doc")
+
+
+def test_filter_is_not_nan(firestore_client):
+    firestore_client.post(
+        f"/v1/{DOCS}/notnancol",
+        params={"documentId": "nan-doc"},
+        json={"fields": {"val": {"doubleValue": "NaN"}}},
+    )
+    firestore_client.post(
+        f"/v1/{DOCS}/notnancol",
+        params={"documentId": "num-doc"},
+        json={"fields": {"val": {"doubleValue": 2.71}}},
+    )
+    r = firestore_client.post(
+        f"/v1/{DOCS}:runQuery",
+        json={
+            "structuredQuery": {
+                "from": [{"collectionId": "notnancol"}],
+                "where": {
+                    "unaryFilter": {
+                        "field": {"fieldPath": "val"},
+                        "op": "IS_NOT_NAN",
+                    }
+                },
+            }
+        },
+    )
+    docs = [row["document"] for row in r.json() if "document" in row]
+    assert len(docs) == 1
+    assert docs[0]["name"].endswith("/num-doc")

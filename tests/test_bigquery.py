@@ -67,7 +67,10 @@ def test_delete_nonempty_dataset_requires_flag(bq_client):
     )
     bq_client.post(
         f"{BASE}/datasets/nonempty/tables",
-        json={"tableReference": {"projectId": PROJECT, "datasetId": "nonempty", "tableId": "t"}, "schema": SCHEMA},
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": "nonempty", "tableId": "t"},
+            "schema": SCHEMA,
+        },
     )
     r = bq_client.delete(f"{BASE}/datasets/nonempty")
     assert r.status_code == 400
@@ -226,9 +229,7 @@ def test_get_job(bq_client):
         f"{BASE}/jobs",
         json={
             "jobReference": {"projectId": PROJECT, "jobId": "my-job-123"},
-            "configuration": {
-                "query": {"query": 'SELECT 1 AS n', "useLegacySql": False}
-            },
+            "configuration": {"query": {"query": "SELECT 1 AS n", "useLegacySql": False}},
         },
     )
     assert r.status_code == 200
@@ -323,7 +324,11 @@ def test_dml_insert_via_jobs(bq_client):
     # Row should be queryable
     r2 = bq_client.post(
         f"{BASE}/jobs",
-        json={"configuration": {"query": {"query": 'SELECT name FROM "myds"."users"', "useLegacySql": False}}},
+        json={
+            "configuration": {
+                "query": {"query": 'SELECT name FROM "myds"."users"', "useLegacySql": False}
+            }
+        },
     )
     result = bq_client.get(f"{BASE}/queries/{r2.json()['jobReference']['jobId']}")
     assert result.json()["rows"][0]["f"][0]["v"] == "Eve"
@@ -376,7 +381,11 @@ def test_dml_delete_via_jobs(bq_client):
     # Row should be gone
     r2 = bq_client.post(
         f"{BASE}/jobs",
-        json={"configuration": {"query": {"query": 'SELECT * FROM "myds"."users"', "useLegacySql": False}}},
+        json={
+            "configuration": {
+                "query": {"query": 'SELECT * FROM "myds"."users"', "useLegacySql": False}
+            }
+        },
     )
     result = bq_client.get(f"{BASE}/queries/{r2.json()['jobReference']['jobId']}")
     assert result.json()["totalRows"] == "0"
@@ -407,7 +416,11 @@ def test_ddl_create_table_as_select(bq_client):
     # New table should be queryable
     r2 = bq_client.post(
         f"{BASE}/jobs",
-        json={"configuration": {"query": {"query": 'SELECT * FROM "myds"."top_users"', "useLegacySql": False}}},
+        json={
+            "configuration": {
+                "query": {"query": 'SELECT * FROM "myds"."top_users"', "useLegacySql": False}
+            }
+        },
     )
     result = bq_client.get(f"{BASE}/queries/{r2.json()['jobReference']['jobId']}")
     assert result.json()["totalRows"] == "1"
@@ -439,7 +452,7 @@ def test_get_missing_job_returns_404(bq_client):
 
 
 def test_cancel_job(bq_client):
-    """cancel is a no-op but returns the job."""
+    """Cancel is a no-op but returns the job."""
     r = bq_client.post(
         f"{BASE}/jobs",
         json={
@@ -457,11 +470,13 @@ def test_query_with_where_clause(bq_client):
     _setup_table(bq_client)
     bq_client.post(
         f"{BASE}/datasets/myds/tables/users/insertAll",
-        json={"rows": [
-            {"insertId": "1", "json": {"id": 1, "name": "Alice", "score": 9.0}},
-            {"insertId": "2", "json": {"id": 2, "name": "Bob", "score": 4.0}},
-            {"insertId": "3", "json": {"id": 3, "name": "Carol", "score": 7.0}},
-        ]},
+        json={
+            "rows": [
+                {"insertId": "1", "json": {"id": 1, "name": "Alice", "score": 9.0}},
+                {"insertId": "2", "json": {"id": 2, "name": "Bob", "score": 4.0}},
+                {"insertId": "3", "json": {"id": 3, "name": "Carol", "score": 7.0}},
+            ]
+        },
     )
     r = bq_client.post(
         f"{BASE}/queries",
@@ -488,7 +503,12 @@ def test_list_tabledata_pagination(bq_client):
     _setup_table(bq_client)
     bq_client.post(
         f"{BASE}/datasets/myds/tables/users/insertAll",
-        json={"rows": [{"insertId": str(i), "json": {"id": i, "name": f"u{i}", "score": float(i)}} for i in range(5)]},
+        json={
+            "rows": [
+                {"insertId": str(i), "json": {"id": i, "name": f"u{i}", "score": float(i)}}
+                for i in range(5)
+            ]
+        },
     )
     r = bq_client.get(f"{BASE}/datasets/myds/tables/users/data?maxResults=3")
     assert r.status_code == 200
@@ -553,11 +573,13 @@ def _make_table(bq_client, dataset_id, table_id, rows):
         f"{BASE}/datasets/{dataset_id}/tables",
         json={
             "tableReference": {"projectId": PROJECT, "datasetId": dataset_id, "tableId": table_id},
-            "schema": {"fields": [
-                {"name": "id", "type": "INTEGER"},
-                {"name": "name", "type": "STRING"},
-                {"name": "score", "type": "FLOAT"},
-            ]},
+            "schema": {
+                "fields": [
+                    {"name": "id", "type": "INTEGER"},
+                    {"name": "name", "type": "STRING"},
+                    {"name": "score", "type": "FLOAT"},
+                ]
+            },
         },
     )
     bq_client.post(
@@ -567,10 +589,15 @@ def _make_table(bq_client, dataset_id, table_id, rows):
 
 
 def test_named_params_via_jobs(bq_client):
-    _make_table(bq_client, "pds1", "pt1", [
-        {"id": 1, "name": "Alice", "score": 9.5},
-        {"id": 2, "name": "Bob", "score": 7.0},
-    ])
+    _make_table(
+        bq_client,
+        "pds1",
+        "pt1",
+        [
+            {"id": 1, "name": "Alice", "score": 9.5},
+            {"id": 2, "name": "Bob", "score": 7.0},
+        ],
+    )
     r = bq_client.post(
         f"{BASE}/jobs",
         json={
@@ -579,7 +606,11 @@ def test_named_params_via_jobs(bq_client):
                     "query": "SELECT name FROM pds1.pt1 WHERE id = @user_id",
                     "parameterMode": "NAMED",
                     "queryParameters": [
-                        {"name": "user_id", "parameterType": {"type": "INT64"}, "parameterValue": {"value": "1"}},
+                        {
+                            "name": "user_id",
+                            "parameterType": {"type": "INT64"},
+                            "parameterValue": {"value": "1"},
+                        },
                     ],
                 }
             }
@@ -595,10 +626,15 @@ def test_named_params_via_jobs(bq_client):
 
 
 def test_positional_params_via_sync_query(bq_client):
-    _make_table(bq_client, "pds2", "pt2", [
-        {"id": 10, "name": "Carol", "score": 8.0},
-        {"id": 20, "name": "Dave", "score": 6.5},
-    ])
+    _make_table(
+        bq_client,
+        "pds2",
+        "pt2",
+        [
+            {"id": 10, "name": "Carol", "score": 8.0},
+            {"id": 20, "name": "Dave", "score": 6.5},
+        ],
+    )
     r = bq_client.post(
         f"{BASE}/queries",
         json={
@@ -617,17 +653,26 @@ def test_positional_params_via_sync_query(bq_client):
 
 def test_named_param_repeated(bq_client):
     """Same @param used twice in one query."""
-    _make_table(bq_client, "pds3", "pt3", [
-        {"id": 5, "name": "Eve", "score": 5.0},
-        {"id": 6, "name": "Frank", "score": 6.0},
-    ])
+    _make_table(
+        bq_client,
+        "pds3",
+        "pt3",
+        [
+            {"id": 5, "name": "Eve", "score": 5.0},
+            {"id": 6, "name": "Frank", "score": 6.0},
+        ],
+    )
     r = bq_client.post(
         f"{BASE}/queries",
         json={
             "query": "SELECT name FROM pds3.pt3 WHERE id >= @lo AND id <= @lo",
             "parameterMode": "NAMED",
             "queryParameters": [
-                {"name": "lo", "parameterType": {"type": "INT64"}, "parameterValue": {"value": "5"}},
+                {
+                    "name": "lo",
+                    "parameterType": {"type": "INT64"},
+                    "parameterValue": {"value": "5"},
+                },
             ],
         },
     )
@@ -646,18 +691,22 @@ def test_bool_and_string_params(bq_client):
         f"{BASE}/datasets/pds4/tables",
         json={
             "tableReference": {"projectId": PROJECT, "datasetId": "pds4", "tableId": "pt4"},
-            "schema": {"fields": [
-                {"name": "active", "type": "BOOLEAN"},
-                {"name": "label", "type": "STRING"},
-            ]},
+            "schema": {
+                "fields": [
+                    {"name": "active", "type": "BOOLEAN"},
+                    {"name": "label", "type": "STRING"},
+                ]
+            },
         },
     )
     bq_client.post(
         f"{BASE}/datasets/pds4/tables/pt4/insertAll",
-        json={"rows": [
-            {"json": {"active": True, "label": "yes"}},
-            {"json": {"active": False, "label": "no"}},
-        ]},
+        json={
+            "rows": [
+                {"json": {"active": True, "label": "yes"}},
+                {"json": {"active": False, "label": "no"}},
+            ]
+        },
     )
     r = bq_client.post(
         f"{BASE}/queries",
@@ -665,8 +714,16 @@ def test_bool_and_string_params(bq_client):
             "query": "SELECT label FROM pds4.pt4 WHERE active = @flag AND label = @lbl",
             "parameterMode": "NAMED",
             "queryParameters": [
-                {"name": "flag", "parameterType": {"type": "BOOL"}, "parameterValue": {"value": "true"}},
-                {"name": "lbl", "parameterType": {"type": "STRING"}, "parameterValue": {"value": "yes"}},
+                {
+                    "name": "flag",
+                    "parameterType": {"type": "BOOL"},
+                    "parameterValue": {"value": "true"},
+                },
+                {
+                    "name": "lbl",
+                    "parameterType": {"type": "STRING"},
+                    "parameterValue": {"value": "yes"},
+                },
             ],
         },
     )
@@ -683,20 +740,40 @@ def test_bool_and_string_params(bq_client):
 
 def test_create_and_query_view(bq_client):
     ds = "vds1"
-    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}})
-    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
-        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "base"},
-        "schema": {"fields": [{"name": "x", "type": "INTEGER"}, {"name": "y", "type": "STRING"}]},
-    })
-    bq_client.post(f"{BASE}/datasets/{ds}/tables/base/insertAll", json={
-        "rows": [{"json": {"x": 1, "y": "a"}}, {"json": {"x": 2, "y": "b"}}, {"json": {"x": 3, "y": "c"}}],
-    })
+    bq_client.post(
+        f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}}
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables",
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "base"},
+            "schema": {
+                "fields": [{"name": "x", "type": "INTEGER"}, {"name": "y", "type": "STRING"}]
+            },
+        },
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables/base/insertAll",
+        json={
+            "rows": [
+                {"json": {"x": 1, "y": "a"}},
+                {"json": {"x": 2, "y": "b"}},
+                {"json": {"x": 3, "y": "c"}},
+            ],
+        },
+    )
 
     # Create view over the table
-    r = bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
-        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "view1"},
-        "view": {"query": f"SELECT x, y FROM `{PROJECT}.{ds}.base` WHERE x > 1", "useLegacySql": False},
-    })
+    r = bq_client.post(
+        f"{BASE}/datasets/{ds}/tables",
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "view1"},
+            "view": {
+                "query": f"SELECT x, y FROM `{PROJECT}.{ds}.base` WHERE x > 1",
+                "useLegacySql": False,
+            },
+        },
+    )
     assert r.status_code == 200
     assert r.json()["type"] == "VIEW"
 
@@ -713,10 +790,13 @@ def test_create_and_query_view(bq_client):
     assert types["view1"] == "VIEW"
 
     # Query the view
-    r = bq_client.post(f"{BASE}/queries", json={
-        "query": f"SELECT x, y FROM `{PROJECT}.{ds}.view1` ORDER BY x",
-        "useLegacySql": False,
-    })
+    r = bq_client.post(
+        f"{BASE}/queries",
+        json={
+            "query": f"SELECT x, y FROM `{PROJECT}.{ds}.view1` ORDER BY x",
+            "useLegacySql": False,
+        },
+    )
     assert r.status_code == 200
     rows = r.json()["rows"]
     assert len(rows) == 2
@@ -726,29 +806,55 @@ def test_create_and_query_view(bq_client):
 
 def test_update_view(bq_client):
     ds = "vds2"
-    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}})
-    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
-        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "src"},
-        "schema": {"fields": [{"name": "n", "type": "INTEGER"}]},
-    })
-    bq_client.post(f"{BASE}/datasets/{ds}/tables/src/insertAll", json={
-        "rows": [{"json": {"n": 10}}, {"json": {"n": 20}}, {"json": {"n": 30}}],
-    })
-    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
-        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "vw"},
-        "view": {"query": f"SELECT n FROM `{PROJECT}.{ds}.src` WHERE n < 20", "useLegacySql": False},
-    })
+    bq_client.post(
+        f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}}
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables",
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "src"},
+            "schema": {"fields": [{"name": "n", "type": "INTEGER"}]},
+        },
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables/src/insertAll",
+        json={
+            "rows": [{"json": {"n": 10}}, {"json": {"n": 20}}, {"json": {"n": 30}}],
+        },
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables",
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "vw"},
+            "view": {
+                "query": f"SELECT n FROM `{PROJECT}.{ds}.src` WHERE n < 20",
+                "useLegacySql": False,
+            },
+        },
+    )
 
     # Original view returns n=10 only
-    r = bq_client.post(f"{BASE}/queries", json={"query": f"SELECT n FROM `{PROJECT}.{ds}.vw`", "useLegacySql": False})
+    r = bq_client.post(
+        f"{BASE}/queries",
+        json={"query": f"SELECT n FROM `{PROJECT}.{ds}.vw`", "useLegacySql": False},
+    )
     assert len(r.json()["rows"]) == 1
 
     # Update view to a wider filter
-    bq_client.patch(f"{BASE}/datasets/{ds}/tables/vw", json={
-        "view": {"query": f"SELECT n FROM `{PROJECT}.{ds}.src` WHERE n <= 20", "useLegacySql": False},
-    })
+    bq_client.patch(
+        f"{BASE}/datasets/{ds}/tables/vw",
+        json={
+            "view": {
+                "query": f"SELECT n FROM `{PROJECT}.{ds}.src` WHERE n <= 20",
+                "useLegacySql": False,
+            },
+        },
+    )
 
-    r = bq_client.post(f"{BASE}/queries", json={"query": f"SELECT n FROM `{PROJECT}.{ds}.vw` ORDER BY n", "useLegacySql": False})
+    r = bq_client.post(
+        f"{BASE}/queries",
+        json={"query": f"SELECT n FROM `{PROJECT}.{ds}.vw` ORDER BY n", "useLegacySql": False},
+    )
     rows = r.json()["rows"]
     assert len(rows) == 2
     assert rows[0]["f"][0]["v"] == "10"
@@ -757,15 +863,23 @@ def test_update_view(bq_client):
 
 def test_delete_view(bq_client):
     ds = "vds3"
-    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}})
-    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
-        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "t"},
-        "schema": {"fields": [{"name": "v", "type": "INTEGER"}]},
-    })
-    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
-        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "vw"},
-        "view": {"query": f"SELECT v FROM `{PROJECT}.{ds}.t`", "useLegacySql": False},
-    })
+    bq_client.post(
+        f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}}
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables",
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "t"},
+            "schema": {"fields": [{"name": "v", "type": "INTEGER"}]},
+        },
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables",
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "vw"},
+            "view": {"query": f"SELECT v FROM `{PROJECT}.{ds}.t`", "useLegacySql": False},
+        },
+    )
     r = bq_client.delete(f"{BASE}/datasets/{ds}/tables/vw")
     assert r.status_code == 204
     assert bq_client.get(f"{BASE}/datasets/{ds}/tables/vw").status_code == 404
@@ -778,35 +892,54 @@ def test_delete_view(bq_client):
 
 def test_add_column(bq_client):
     ds = "seds1"
-    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}})
-    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
-        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "t"},
-        "schema": {"fields": [{"name": "id", "type": "INTEGER"}]},
-    })
-    bq_client.post(f"{BASE}/datasets/{ds}/tables/t/insertAll", json={
-        "rows": [{"json": {"id": 1}}, {"json": {"id": 2}}],
-    })
+    bq_client.post(
+        f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}}
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables",
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "t"},
+            "schema": {"fields": [{"name": "id", "type": "INTEGER"}]},
+        },
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables/t/insertAll",
+        json={
+            "rows": [{"json": {"id": 1}}, {"json": {"id": 2}}],
+        },
+    )
 
     # Add a new column via PATCH
-    r = bq_client.patch(f"{BASE}/datasets/{ds}/tables/t", json={
-        "schema": {"fields": [
-            {"name": "id", "type": "INTEGER"},
-            {"name": "label", "type": "STRING"},
-        ]},
-    })
+    r = bq_client.patch(
+        f"{BASE}/datasets/{ds}/tables/t",
+        json={
+            "schema": {
+                "fields": [
+                    {"name": "id", "type": "INTEGER"},
+                    {"name": "label", "type": "STRING"},
+                ]
+            },
+        },
+    )
     assert r.status_code == 200
     schema_fields = {f["name"] for f in r.json()["schema"]["fields"]}
     assert "id" in schema_fields
     assert "label" in schema_fields
 
     # Insert a row using the new column and query it back
-    bq_client.post(f"{BASE}/datasets/{ds}/tables/t/insertAll", json={
-        "rows": [{"json": {"id": 3, "label": "hello"}}],
-    })
-    r = bq_client.post(f"{BASE}/queries", json={
-        "query": f"SELECT id, label FROM `{PROJECT}.{ds}.t` WHERE id = 3",
-        "useLegacySql": False,
-    })
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables/t/insertAll",
+        json={
+            "rows": [{"json": {"id": 3, "label": "hello"}}],
+        },
+    )
+    r = bq_client.post(
+        f"{BASE}/queries",
+        json={
+            "query": f"SELECT id, label FROM `{PROJECT}.{ds}.t` WHERE id = 3",
+            "useLegacySql": False,
+        },
+    )
     assert r.status_code == 200
     rows = r.json()["rows"]
     assert len(rows) == 1
@@ -817,18 +950,26 @@ def test_add_column(bq_client):
 
 def test_update_table_description_and_labels(bq_client):
     ds = "seds2"
-    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}})
-    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
-        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "t"},
-        "schema": {"fields": [{"name": "x", "type": "INTEGER"}]},
-        "description": "original",
-        "labels": {"env": "dev"},
-    })
+    bq_client.post(
+        f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}}
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables",
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "t"},
+            "schema": {"fields": [{"name": "x", "type": "INTEGER"}]},
+            "description": "original",
+            "labels": {"env": "dev"},
+        },
+    )
 
-    r = bq_client.patch(f"{BASE}/datasets/{ds}/tables/t", json={
-        "description": "updated",
-        "labels": {"env": "prod", "team": "data"},
-    })
+    r = bq_client.patch(
+        f"{BASE}/datasets/{ds}/tables/t",
+        json={
+            "description": "updated",
+            "labels": {"env": "prod", "team": "data"},
+        },
+    )
     assert r.status_code == 200
     assert r.json()["description"] == "updated"
     assert r.json()["labels"]["env"] == "prod"
@@ -838,14 +979,26 @@ def test_update_table_description_and_labels(bq_client):
 def test_add_existing_column_is_noop(bq_client):
     """PATCHing with an already-existing field name does not raise."""
     ds = "seds3"
-    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}})
-    bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
-        "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "t"},
-        "schema": {"fields": [{"name": "id", "type": "INTEGER"}, {"name": "name", "type": "STRING"}]},
-    })
-    r = bq_client.patch(f"{BASE}/datasets/{ds}/tables/t", json={
-        "schema": {"fields": [{"name": "id", "type": "INTEGER"}, {"name": "name", "type": "STRING"}]},
-    })
+    bq_client.post(
+        f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}}
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables",
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": "t"},
+            "schema": {
+                "fields": [{"name": "id", "type": "INTEGER"}, {"name": "name", "type": "STRING"}]
+            },
+        },
+    )
+    r = bq_client.patch(
+        f"{BASE}/datasets/{ds}/tables/t",
+        json={
+            "schema": {
+                "fields": [{"name": "id", "type": "INTEGER"}, {"name": "name", "type": "STRING"}]
+            },
+        },
+    )
     assert r.status_code == 200
     assert len(r.json()["schema"]["fields"]) == 2
 
@@ -856,25 +1009,35 @@ def test_add_existing_column_is_noop(bq_client):
 
 
 def _setup_is_dataset(bq_client, ds: str, tables: list[str]) -> None:
-    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}})
+    bq_client.post(
+        f"{BASE}/datasets", json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}}
+    )
     for t in tables:
-        bq_client.post(f"{BASE}/datasets/{ds}/tables", json={
-            "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": t},
-            "schema": {"fields": [
-                {"name": "id", "type": "INTEGER"},
-                {"name": "name", "type": "STRING"},
-            ]},
-        })
+        bq_client.post(
+            f"{BASE}/datasets/{ds}/tables",
+            json={
+                "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": t},
+                "schema": {
+                    "fields": [
+                        {"name": "id", "type": "INTEGER"},
+                        {"name": "name", "type": "STRING"},
+                    ]
+                },
+            },
+        )
 
 
 def test_information_schema_tables(bq_client):
     """INFORMATION_SCHEMA.TABLES returns rows for tables in the dataset."""
     _setup_is_dataset(bq_client, "isds1", ["orders", "customers"])
 
-    r = bq_client.post(f"{BASE}/queries", json={
-        "query": f"SELECT table_name FROM `{PROJECT}.isds1.INFORMATION_SCHEMA.TABLES`",
-        "useLegacySql": False,
-    })
+    r = bq_client.post(
+        f"{BASE}/queries",
+        json={
+            "query": f"SELECT table_name FROM `{PROJECT}.isds1.INFORMATION_SCHEMA.TABLES`",
+            "useLegacySql": False,
+        },
+    )
     assert r.status_code == 200
     rows = r.json().get("rows", [])
     names = {row["f"][0]["v"] for row in rows}
@@ -886,10 +1049,13 @@ def test_information_schema_tables_unquoted(bq_client):
     """INFORMATION_SCHEMA.TABLES works without backtick quoting."""
     _setup_is_dataset(bq_client, "isds2", ["events"])
 
-    r = bq_client.post(f"{BASE}/queries", json={
-        "query": "SELECT table_name, table_schema FROM isds2.INFORMATION_SCHEMA.TABLES",
-        "useLegacySql": False,
-    })
+    r = bq_client.post(
+        f"{BASE}/queries",
+        json={
+            "query": "SELECT table_name, table_schema FROM isds2.INFORMATION_SCHEMA.TABLES",
+            "useLegacySql": False,
+        },
+    )
     assert r.status_code == 200
     names = {row["f"][0]["v"] for row in r.json().get("rows", [])}
     assert "events" in names
@@ -899,13 +1065,16 @@ def test_information_schema_columns(bq_client):
     """INFORMATION_SCHEMA.COLUMNS returns column metadata."""
     _setup_is_dataset(bq_client, "isds3", ["products"])
 
-    r = bq_client.post(f"{BASE}/queries", json={
-        "query": (
-            "SELECT column_name, data_type FROM isds3.INFORMATION_SCHEMA.COLUMNS "
-            "WHERE table_name = 'products'"
-        ),
-        "useLegacySql": False,
-    })
+    r = bq_client.post(
+        f"{BASE}/queries",
+        json={
+            "query": (
+                "SELECT column_name, data_type FROM isds3.INFORMATION_SCHEMA.COLUMNS "
+                "WHERE table_name = 'products'"
+            ),
+            "useLegacySql": False,
+        },
+    )
     assert r.status_code == 200
     rows = r.json().get("rows", [])
     col_names = {row["f"][0]["v"] for row in rows}
@@ -917,10 +1086,34 @@ def test_information_schema_schemata(bq_client):
     """INFORMATION_SCHEMA.SCHEMATA lists known schemas."""
     _setup_is_dataset(bq_client, "isds4", [])
 
-    r = bq_client.post(f"{BASE}/queries", json={
-        "query": "SELECT schema_name FROM INFORMATION_SCHEMA.SCHEMATA",
-        "useLegacySql": False,
-    })
+    r = bq_client.post(
+        f"{BASE}/queries",
+        json={
+            "query": "SELECT schema_name FROM INFORMATION_SCHEMA.SCHEMATA",
+            "useLegacySql": False,
+        },
+    )
     assert r.status_code == 200
     schema_names = {row["f"][0]["v"] for row in r.json().get("rows", [])}
     assert "isds4" in schema_names
+
+
+# ---------------------------------------------------------------------------
+# Missing-resource 404 paths
+# ---------------------------------------------------------------------------
+
+
+def test_list_tabledata_missing_table_returns_404(bq_client):
+    bq_client.post(f"{BASE}/datasets", json={"datasetReference": {"datasetId": "ds404"}})
+    r = bq_client.get(f"{BASE}/datasets/ds404/tables/no-such-table/data")
+    assert r.status_code == 404
+
+
+def test_cancel_missing_job_returns_404(bq_client):
+    r = bq_client.post(f"{BASE}/jobs/nonexistent-job/cancel")
+    assert r.status_code == 404
+
+
+def test_get_query_results_missing_job_returns_404(bq_client):
+    r = bq_client.get(f"{BASE}/queries/nonexistent-job")
+    assert r.status_code == 404
