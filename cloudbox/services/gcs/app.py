@@ -1122,6 +1122,8 @@ async def update_object_metadata(
         "contentDisposition",
         "cacheControl",
         "contentEncoding",
+        "temporaryHold",
+        "eventBasedHold",
     ):
         if field in body:
             data[field] = body[field]
@@ -1172,6 +1174,9 @@ async def delete_object(
         if_generation_match=ifGenerationMatch or None,
         if_metageneration_match=ifMetagenerationMatch or None,
     )
+    if obj_data.get("temporaryHold") or obj_data.get("eventBasedHold"):
+        raise GCPError(403, f"Object '{object_name}' has an active hold and cannot be deleted.")
+
     expiry = obj_data.get("retentionExpirationTime", "")
     if expiry:
         from datetime import datetime

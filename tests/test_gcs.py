@@ -1,5 +1,7 @@
 """Tests for Cloud Storage emulator."""
 
+from datetime import UTC, datetime, timedelta
+
 
 def test_create_and_get_bucket(gcs_client):
     r = gcs_client.post("/storage/v1/b", json={"name": "test-bucket"})
@@ -125,9 +127,7 @@ def test_copy_object(gcs_client):
         content=b"copy me",
         headers={"content-type": "text/plain"},
     )
-    r = gcs_client.post(
-        "/storage/v1/b/src-bkt/o/orig.txt/copyTo/b/dst-bkt/o/copy.txt"
-    )
+    r = gcs_client.post("/storage/v1/b/src-bkt/o/orig.txt/copyTo/b/dst-bkt/o/copy.txt")
     assert r.status_code == 200
     r = gcs_client.get("/download/storage/v1/b/dst-bkt/o/copy.txt")
     assert r.content == b"copy me"
@@ -136,17 +136,22 @@ def test_copy_object(gcs_client):
 def test_multipart_upload(gcs_client):
     """uploadType=multipart carries name + content-type in the metadata part."""
     import json
+
     gcs_client.post("/storage/v1/b", json={"name": "mp-bucket"})
     boundary = "foo_boundary"
     metadata = json.dumps({"name": "multi.json", "contentType": "application/json"})
     body_bytes = b'{"key": "value"}'
     payload = (
-        f"--{boundary}\r\n"
-        "Content-Type: application/json\r\n\r\n"
-        f"{metadata}\r\n"
-        f"--{boundary}\r\n"
-        "Content-Type: application/json\r\n\r\n"
-    ).encode() + body_bytes + f"\r\n--{boundary}--".encode()
+        (
+            f"--{boundary}\r\n"
+            "Content-Type: application/json\r\n\r\n"
+            f"{metadata}\r\n"
+            f"--{boundary}\r\n"
+            "Content-Type: application/json\r\n\r\n"
+        ).encode()
+        + body_bytes
+        + f"\r\n--{boundary}--".encode()
+    )
 
     r = gcs_client.post(
         "/upload/storage/v1/b/mp-bucket/o?uploadType=multipart",
@@ -261,7 +266,7 @@ def test_checksums_present_in_metadata(gcs_client):
 
 
 def test_list_objects_delimiter_virtual_dirs(gcs_client):
-    """delimiter collapses common prefixes into the prefixes[] result."""
+    """Delimiter collapses common prefixes into the prefixes[] result."""
     gcs_client.post("/storage/v1/b", json={"name": "delim-bkt"})
     for name in ("a/1.txt", "a/2.txt", "b/3.txt", "top.txt"):
         gcs_client.post(
@@ -369,6 +374,7 @@ def test_create_notification_missing_bucket_returns_404(gcs_client):
 # Byte-range downloads
 # ---------------------------------------------------------------------------
 
+
 def _upload(gcs_client, bucket, name, content):
     gcs_client.post("/storage/v1/b", json={"name": bucket})
     gcs_client.post(
@@ -449,12 +455,15 @@ def test_compose_basic(gcs_client):
     for i, chunk in enumerate([b"hello ", b"world", b"!"]):
         gcs_client.post(
             f"/upload/storage/v1/b/cbkt/o?name=part{i}&uploadType=media",
-            content=chunk, headers={"content-type": "text/plain"},
+            content=chunk,
+            headers={"content-type": "text/plain"},
         )
     r = gcs_client.post(
         "/storage/v1/b/cbkt/o/composed.txt/compose",
-        json={"sourceObjects": [{"name": "part0"}, {"name": "part1"}, {"name": "part2"}],
-              "destination": {"contentType": "text/plain"}},
+        json={
+            "sourceObjects": [{"name": "part0"}, {"name": "part1"}, {"name": "part2"}],
+            "destination": {"contentType": "text/plain"},
+        },
     )
     assert r.status_code == 200
     assert r.json()["name"] == "composed.txt"
@@ -484,11 +493,14 @@ def test_compose_generation_match_mismatch(gcs_client):
     gcs_client.post("/storage/v1/b", json={"name": "cbkt4"})
     gcs_client.post(
         "/upload/storage/v1/b/cbkt4/o?name=src&uploadType=media",
-        content=b"data", headers={"content-type": "text/plain"},
+        content=b"data",
+        headers={"content-type": "text/plain"},
     )
     r = gcs_client.post(
         "/storage/v1/b/cbkt4/o/out/compose",
-        json={"sourceObjects": [{"name": "src", "objectPreconditions": {"ifGenerationMatch": "999"}}]},
+        json={
+            "sourceObjects": [{"name": "src", "objectPreconditions": {"ifGenerationMatch": "999"}}]
+        },
     )
     assert r.status_code == 412
 
@@ -539,7 +551,7 @@ def test_if_none_match_etag_returns_304_when_matches(gcs_client):
 def test_if_generation_match_on_delete(gcs_client):
     _upload(gcs_client, "cond5", "f.bin", b"data")
     gen = gcs_client.get("/storage/v1/b/cond5/o/f.bin").json()["generation"]
-    r = gcs_client.delete(f"/storage/v1/b/cond5/o/f.bin?ifGenerationMatch=999")
+    r = gcs_client.delete("/storage/v1/b/cond5/o/f.bin?ifGenerationMatch=999")
     assert r.status_code == 412
     r = gcs_client.delete(f"/storage/v1/b/cond5/o/f.bin?ifGenerationMatch={gen}")
     assert r.status_code == 204
@@ -549,7 +561,8 @@ def test_if_generation_match_zero_on_upload_prevents_overwrite(gcs_client):
     _upload(gcs_client, "cond6", "f.bin", b"original")
     r = gcs_client.post(
         "/upload/storage/v1/b/cond6/o?name=f.bin&uploadType=media&ifGenerationMatch=0",
-        content=b"new", headers={"content-type": "text/plain"},
+        content=b"new",
+        headers={"content-type": "text/plain"},
     )
     assert r.status_code == 412
     assert gcs_client.get("/storage/v1/b/cond6/o/f.bin?alt=media").content == b"original"
@@ -559,7 +572,8 @@ def test_if_generation_match_zero_on_upload_allows_new_object(gcs_client):
     gcs_client.post("/storage/v1/b", json={"name": "cond7"})
     r = gcs_client.post(
         "/upload/storage/v1/b/cond7/o?name=new.bin&uploadType=media&ifGenerationMatch=0",
-        content=b"hello", headers={"content-type": "text/plain"},
+        content=b"hello",
+        headers={"content-type": "text/plain"},
     )
     assert r.status_code == 200
 
@@ -627,7 +641,7 @@ def test_if_metageneration_match_on_patch(gcs_client):
     meta = gcs_client.get("/storage/v1/b/cond8/o/f.bin").json()
     metagen = meta["metageneration"]
     r = gcs_client.patch(
-        f"/storage/v1/b/cond8/o/f.bin?ifMetagenerationMatch=999",
+        "/storage/v1/b/cond8/o/f.bin?ifMetagenerationMatch=999",
         json={"contentType": "text/plain"},
     )
     assert r.status_code == 412
@@ -701,9 +715,12 @@ def test_cors_empty_by_default(gcs_client):
 
 def test_retention_policy_set_and_get(gcs_client):
     gcs_client.post("/storage/v1/b", json={"name": "ret1"})
-    r = gcs_client.patch("/storage/v1/b/ret1/retentionPolicy", json={
-        "retentionPolicy": {"retentionPeriod": "3600"},
-    })
+    r = gcs_client.patch(
+        "/storage/v1/b/ret1/retentionPolicy",
+        json={
+            "retentionPolicy": {"retentionPeriod": "3600"},
+        },
+    )
     assert r.status_code == 200
     assert r.json()["retentionPolicy"]["retentionPeriod"] == "3600"
 
@@ -714,9 +731,12 @@ def test_retention_policy_set_and_get(gcs_client):
 
 def test_retention_policy_in_bucket_metadata(gcs_client):
     gcs_client.post("/storage/v1/b", json={"name": "ret2"})
-    gcs_client.patch("/storage/v1/b/ret2/retentionPolicy", json={
-        "retentionPolicy": {"retentionPeriod": "86400"},
-    })
+    gcs_client.patch(
+        "/storage/v1/b/ret2/retentionPolicy",
+        json={
+            "retentionPolicy": {"retentionPeriod": "86400"},
+        },
+    )
     r = gcs_client.get("/storage/v1/b/ret2")
     assert r.status_code == 200
     assert r.json()["retentionPolicy"]["retentionPeriod"] == "86400"
@@ -724,9 +744,12 @@ def test_retention_policy_in_bucket_metadata(gcs_client):
 
 def test_retention_policy_object_gets_expiry(gcs_client):
     gcs_client.post("/storage/v1/b", json={"name": "ret3"})
-    gcs_client.patch("/storage/v1/b/ret3/retentionPolicy", json={
-        "retentionPolicy": {"retentionPeriod": "3600"},
-    })
+    gcs_client.patch(
+        "/storage/v1/b/ret3/retentionPolicy",
+        json={
+            "retentionPolicy": {"retentionPeriod": "3600"},
+        },
+    )
     r = gcs_client.post(
         "/upload/storage/v1/b/ret3/o?name=file.txt&uploadType=media",
         content=b"hello",
@@ -739,9 +762,12 @@ def test_retention_policy_object_gets_expiry(gcs_client):
 
 def test_retention_policy_blocks_delete(gcs_client):
     gcs_client.post("/storage/v1/b", json={"name": "ret4"})
-    gcs_client.patch("/storage/v1/b/ret4/retentionPolicy", json={
-        "retentionPolicy": {"retentionPeriod": "999999"},
-    })
+    gcs_client.patch(
+        "/storage/v1/b/ret4/retentionPolicy",
+        json={
+            "retentionPolicy": {"retentionPeriod": "999999"},
+        },
+    )
     gcs_client.post(
         "/upload/storage/v1/b/ret4/o?name=file.txt&uploadType=media",
         content=b"hello",
@@ -765,9 +791,12 @@ def test_retention_policy_allows_delete_after_expiry(gcs_client):
 
 def test_retention_policy_delete_removes_policy(gcs_client):
     gcs_client.post("/storage/v1/b", json={"name": "ret6"})
-    gcs_client.patch("/storage/v1/b/ret6/retentionPolicy", json={
-        "retentionPolicy": {"retentionPeriod": "3600"},
-    })
+    gcs_client.patch(
+        "/storage/v1/b/ret6/retentionPolicy",
+        json={
+            "retentionPolicy": {"retentionPeriod": "3600"},
+        },
+    )
     r = gcs_client.delete("/storage/v1/b/ret6/retentionPolicy")
     assert r.status_code == 204
     r2 = gcs_client.get("/storage/v1/b/ret6/retentionPolicy")
@@ -776,8 +805,412 @@ def test_retention_policy_delete_removes_policy(gcs_client):
 
 def test_retention_policy_locked_cannot_be_removed(gcs_client):
     gcs_client.post("/storage/v1/b", json={"name": "ret7"})
-    gcs_client.patch("/storage/v1/b/ret7/retentionPolicy", json={
-        "retentionPolicy": {"retentionPeriod": "3600", "isLocked": True},
-    })
+    gcs_client.patch(
+        "/storage/v1/b/ret7/retentionPolicy",
+        json={
+            "retentionPolicy": {"retentionPeriod": "3600", "isLocked": True},
+        },
+    )
     r = gcs_client.delete("/storage/v1/b/ret7/retentionPolicy")
     assert r.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Resumable uploads
+# ---------------------------------------------------------------------------
+
+
+def test_resumable_upload_single_chunk(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "bkt"})
+    r = gcs_client.post(
+        "/upload/storage/v1/b/bkt/o?uploadType=resumable&name=file.bin",
+        headers={"x-upload-content-type": "application/octet-stream"},
+    )
+    assert r.status_code == 200
+    location = r.headers["location"]
+
+    data = b"hello resumable"
+    r2 = gcs_client.put(
+        location,
+        content=data,
+        headers={"content-range": f"bytes 0-{len(data) - 1}/{len(data)}"},
+    )
+    assert r2.status_code == 200
+    meta = r2.json()
+    assert meta["name"] == "file.bin"
+    assert meta["size"] == str(len(data))
+
+
+def test_resumable_upload_multi_chunk(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "bkt"})
+    r = gcs_client.post(
+        "/upload/storage/v1/b/bkt/o?uploadType=resumable&name=chunked.bin",
+        headers={
+            "x-upload-content-type": "application/octet-stream",
+            "x-upload-content-length": "10",
+        },
+    )
+    location = r.headers["location"]
+
+    # First chunk (bytes 0-4 of 10)
+    r1 = gcs_client.put(
+        location,
+        content=b"hello",
+        headers={"content-range": "bytes 0-4/10"},
+    )
+    assert r1.status_code == 308
+    assert r1.headers["range"] == "bytes=0-4"
+
+    # Final chunk (bytes 5-9 of 10)
+    r2 = gcs_client.put(
+        location,
+        content=b"world",
+        headers={"content-range": "bytes 5-9/10"},
+    )
+    assert r2.status_code == 200
+    assert r2.json()["size"] == "10"
+
+    # Verify content is the full concatenation
+    dl = gcs_client.get("/download/storage/v1/b/bkt/o/chunked.bin")
+    assert dl.content == b"helloworld"
+
+
+def test_resumable_status_query(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "bkt"})
+    r = gcs_client.post(
+        "/upload/storage/v1/b/bkt/o?uploadType=resumable&name=status.bin",
+        headers={
+            "x-upload-content-type": "application/octet-stream",
+            "x-upload-content-length": "10",
+        },
+    )
+    location = r.headers["location"]
+
+    # Upload first chunk
+    gcs_client.put(location, content=b"hello", headers={"content-range": "bytes 0-4/10"})
+
+    # Status query
+    r_status = gcs_client.put(location, content=b"", headers={"content-range": "bytes */10"})
+    assert r_status.status_code == 308
+    assert r_status.headers["range"] == "bytes=0-4"
+
+
+def test_resumable_missing_session_returns_404(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "bkt"})
+    r = gcs_client.put(
+        "/upload/storage/v1/b/bkt/o?uploadType=resumable&upload_id=nonexistent",
+        content=b"data",
+        headers={"content-range": "bytes 0-3/4"},
+    )
+    assert r.status_code == 404
+
+
+def test_resumable_name_from_json_body(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "bkt"})
+    r = gcs_client.post(
+        "/upload/storage/v1/b/bkt/o?uploadType=resumable",
+        json={"name": "from-body.txt", "contentType": "text/plain"},
+    )
+    assert r.status_code == 200
+    location = r.headers["location"]
+
+    data = b"body name"
+    r2 = gcs_client.put(
+        location,
+        content=data,
+        headers={"content-range": f"bytes 0-{len(data) - 1}/{len(data)}"},
+    )
+    assert r2.status_code == 200
+    assert r2.json()["name"] == "from-body.txt"
+    assert r2.json()["contentType"] == "text/plain"
+
+
+def test_resumable_if_generation_match_zero_prevents_overwrite(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "bkt"})
+    # Upload the object once
+    gcs_client.post(
+        "/upload/storage/v1/b/bkt/o?uploadType=media&name=obj.txt",
+        content=b"first",
+        headers={"content-type": "text/plain"},
+    )
+    # Initiate resumable with ifGenerationMatch=0 (requires object to not exist)
+    r = gcs_client.post(
+        "/upload/storage/v1/b/bkt/o?uploadType=resumable&name=obj.txt&ifGenerationMatch=0",
+        headers={"x-upload-content-type": "text/plain"},
+    )
+    location = r.headers["location"]
+
+    data = b"second"
+    r2 = gcs_client.put(
+        location,
+        content=data,
+        headers={"content-range": f"bytes 0-{len(data) - 1}/{len(data)}"},
+    )
+    assert r2.status_code == 412
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle rules
+# ---------------------------------------------------------------------------
+
+
+def test_lifecycle_delete_age_zero(gcs_client):
+    """age=0 matches all objects (created ≥ 0 days ago), so list triggers deletion."""
+    gcs_client.post(
+        "/storage/v1/b",
+        json={
+            "name": "lc1",
+            "lifecycle": {"rule": [{"action": {"type": "Delete"}, "condition": {"age": 0}}]},
+        },
+    )
+    gcs_client.post(
+        "/upload/storage/v1/b/lc1/o?uploadType=media&name=gone.txt",
+        content=b"bye",
+        headers={"content-type": "text/plain"},
+    )
+    r = gcs_client.get("/storage/v1/b/lc1/o")
+    assert r.status_code == 200
+    assert r.json().get("items", []) == []
+
+
+def test_lifecycle_delete_created_before_future(gcs_client):
+    """CreatedBefore set to tomorrow deletes all just-created objects."""
+    tomorrow = (datetime.now(UTC) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    gcs_client.post(
+        "/storage/v1/b",
+        json={
+            "name": "lc2",
+            "lifecycle": {
+                "rule": [{"action": {"type": "Delete"}, "condition": {"createdBefore": tomorrow}}]
+            },
+        },
+    )
+    gcs_client.post(
+        "/upload/storage/v1/b/lc2/o?uploadType=media&name=gone.txt",
+        content=b"bye",
+        headers={"content-type": "text/plain"},
+    )
+    r = gcs_client.get("/storage/v1/b/lc2/o")
+    assert r.json().get("items", []) == []
+
+
+def test_lifecycle_created_before_past_no_match(gcs_client):
+    """CreatedBefore set to yesterday does not delete recently-created objects."""
+    yesterday = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    gcs_client.post(
+        "/storage/v1/b",
+        json={
+            "name": "lc3",
+            "lifecycle": {
+                "rule": [{"action": {"type": "Delete"}, "condition": {"createdBefore": yesterday}}]
+            },
+        },
+    )
+    gcs_client.post(
+        "/upload/storage/v1/b/lc3/o?uploadType=media&name=keep.txt",
+        content=b"hi",
+        headers={"content-type": "text/plain"},
+    )
+    r = gcs_client.get("/storage/v1/b/lc3/o")
+    assert len(r.json()["items"]) == 1
+
+
+def test_lifecycle_set_storage_class(gcs_client):
+    """SetStorageClass rule transitions matching objects to a new class."""
+    gcs_client.post(
+        "/storage/v1/b",
+        json={
+            "name": "lc4",
+            "lifecycle": {
+                "rule": [
+                    {
+                        "action": {"type": "SetStorageClass", "storageClass": "COLDLINE"},
+                        "condition": {"matchesStorageClass": ["STANDARD"], "age": 0},
+                    }
+                ]
+            },
+        },
+    )
+    gcs_client.post(
+        "/upload/storage/v1/b/lc4/o?uploadType=media&name=obj.txt",
+        content=b"data",
+        headers={"content-type": "text/plain"},
+    )
+    r = gcs_client.get("/storage/v1/b/lc4/o")
+    assert r.json()["items"][0]["storageClass"] == "COLDLINE"
+
+
+def test_lifecycle_set_via_patch(gcs_client):
+    """Lifecycle rules can be added to an existing bucket via PATCH."""
+    gcs_client.post("/storage/v1/b", json={"name": "lc5"})
+    gcs_client.post(
+        "/upload/storage/v1/b/lc5/o?uploadType=media&name=gone.txt",
+        content=b"bye",
+        headers={"content-type": "text/plain"},
+    )
+    gcs_client.patch(
+        "/storage/v1/b/lc5",
+        json={
+            "lifecycle": {"rule": [{"action": {"type": "Delete"}, "condition": {"age": 0}}]},
+        },
+    )
+    r = gcs_client.get("/storage/v1/b/lc5/o")
+    assert r.json().get("items", []) == []
+
+
+# ---------------------------------------------------------------------------
+# Bucket labels and storageClass
+# ---------------------------------------------------------------------------
+
+
+def test_bucket_labels_roundtrip(gcs_client):
+    gcs_client.post(
+        "/storage/v1/b", json={"name": "lbl1", "labels": {"env": "test", "team": "gcs"}}
+    )
+    r = gcs_client.get("/storage/v1/b/lbl1")
+    assert r.json()["labels"] == {"env": "test", "team": "gcs"}
+
+
+def test_bucket_labels_patch(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "lbl2", "labels": {"env": "test"}})
+    gcs_client.patch("/storage/v1/b/lbl2", json={"labels": {"env": "prod", "region": "us"}})
+    r = gcs_client.get("/storage/v1/b/lbl2")
+    assert r.json()["labels"] == {"env": "prod", "region": "us"}
+
+
+def test_bucket_storage_class_roundtrip(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "sc1", "storageClass": "NEARLINE"})
+    r = gcs_client.get("/storage/v1/b/sc1")
+    assert r.json()["storageClass"] == "NEARLINE"
+
+
+def test_bucket_storage_class_patch(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "sc2", "storageClass": "STANDARD"})
+    gcs_client.patch("/storage/v1/b/sc2", json={"storageClass": "ARCHIVE"})
+    r = gcs_client.get("/storage/v1/b/sc2")
+    assert r.json()["storageClass"] == "ARCHIVE"
+
+
+def test_bucket_metageneration_increments_on_patch(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "mg1"})
+    r0 = gcs_client.get("/storage/v1/b/mg1")
+    assert r0.json()["metageneration"] == "1"
+
+    gcs_client.patch("/storage/v1/b/mg1", json={"labels": {"x": "y"}})
+    r1 = gcs_client.get("/storage/v1/b/mg1")
+    assert r1.json()["metageneration"] == "2"
+
+    gcs_client.patch("/storage/v1/b/mg1", json={"labels": {"x": "z"}})
+    r2 = gcs_client.get("/storage/v1/b/mg1")
+    assert r2.json()["metageneration"] == "3"
+
+
+# ---------------------------------------------------------------------------
+# Pagination
+# ---------------------------------------------------------------------------
+
+
+def test_list_objects_pagination(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "pg1"})
+    for i in range(5):
+        gcs_client.post(
+            f"/upload/storage/v1/b/pg1/o?uploadType=media&name=obj{i}.txt",
+            content=b"x",
+            headers={"content-type": "text/plain"},
+        )
+
+    r1 = gcs_client.get("/storage/v1/b/pg1/o?maxResults=2")
+    assert r1.status_code == 200
+    body1 = r1.json()
+    assert len(body1["items"]) == 2
+    assert "nextPageToken" in body1
+
+    r2 = gcs_client.get(f"/storage/v1/b/pg1/o?maxResults=2&pageToken={body1['nextPageToken']}")
+    body2 = r2.json()
+    assert len(body2["items"]) == 2
+    assert "nextPageToken" in body2
+
+    r3 = gcs_client.get(f"/storage/v1/b/pg1/o?maxResults=2&pageToken={body2['nextPageToken']}")
+    body3 = r3.json()
+    assert len(body3["items"]) == 1
+    assert "nextPageToken" not in body3
+
+    # All names unique across pages
+    all_names = (
+        [o["name"] for o in body1["items"]]
+        + [o["name"] for o in body2["items"]]
+        + [o["name"] for o in body3["items"]]
+    )
+    assert len(set(all_names)) == 5
+
+
+def test_list_objects_max_results_no_overflow(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "pg2"})
+    for i in range(3):
+        gcs_client.post(
+            f"/upload/storage/v1/b/pg2/o?uploadType=media&name=f{i}.txt",
+            content=b"x",
+            headers={"content-type": "text/plain"},
+        )
+    r = gcs_client.get("/storage/v1/b/pg2/o?maxResults=10")
+    body = r.json()
+    assert len(body["items"]) == 3
+    assert "nextPageToken" not in body
+
+
+# ---------------------------------------------------------------------------
+# Object holds
+# ---------------------------------------------------------------------------
+
+
+def test_temporary_hold_blocks_delete(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "hold1"})
+    gcs_client.post(
+        "/upload/storage/v1/b/hold1/o?uploadType=media&name=obj.txt",
+        content=b"data",
+        headers={"content-type": "text/plain"},
+    )
+    gcs_client.patch("/storage/v1/b/hold1/o/obj.txt", json={"temporaryHold": True})
+    r = gcs_client.delete("/storage/v1/b/hold1/o/obj.txt")
+    assert r.status_code == 403
+
+
+def test_temporary_hold_release_allows_delete(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "hold2"})
+    gcs_client.post(
+        "/upload/storage/v1/b/hold2/o?uploadType=media&name=obj.txt",
+        content=b"data",
+        headers={"content-type": "text/plain"},
+    )
+    gcs_client.patch("/storage/v1/b/hold2/o/obj.txt", json={"temporaryHold": True})
+    gcs_client.patch("/storage/v1/b/hold2/o/obj.txt", json={"temporaryHold": False})
+    r = gcs_client.delete("/storage/v1/b/hold2/o/obj.txt")
+    assert r.status_code == 204
+
+
+def test_event_based_hold_blocks_delete(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "hold3"})
+    gcs_client.post(
+        "/upload/storage/v1/b/hold3/o?uploadType=media&name=obj.txt",
+        content=b"data",
+        headers={"content-type": "text/plain"},
+    )
+    gcs_client.patch("/storage/v1/b/hold3/o/obj.txt", json={"eventBasedHold": True})
+    r = gcs_client.delete("/storage/v1/b/hold3/o/obj.txt")
+    assert r.status_code == 403
+
+
+def test_hold_fields_in_metadata(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "hold4"})
+    gcs_client.post(
+        "/upload/storage/v1/b/hold4/o?uploadType=media&name=obj.txt",
+        content=b"data",
+        headers={"content-type": "text/plain"},
+    )
+    r0 = gcs_client.get("/storage/v1/b/hold4/o/obj.txt")
+    assert r0.json()["temporaryHold"] is False
+    assert r0.json()["eventBasedHold"] is False
+
+    gcs_client.patch("/storage/v1/b/hold4/o/obj.txt", json={"temporaryHold": True})
+    r1 = gcs_client.get("/storage/v1/b/hold4/o/obj.txt")
+    assert r1.json()["temporaryHold"] is True

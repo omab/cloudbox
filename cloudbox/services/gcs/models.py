@@ -117,6 +117,8 @@ class ObjectModel(BaseModel):
     updated: str = Field(default_factory=_now_rfc3339)
     metadata: dict[str, str] = Field(default_factory=dict)
     retentionExpirationTime: str = ""
+    temporaryHold: bool = False
+    eventBasedHold: bool = False
 
     def model_post_init(self, __context: Any) -> None:
         """Populate derived fields after construction.
