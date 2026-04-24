@@ -1117,3 +1117,21 @@ def test_cancel_missing_job_returns_404(bq_client):
 def test_get_query_results_missing_job_returns_404(bq_client):
     r = bq_client.get(f"{BASE}/queries/nonexistent-job")
     assert r.status_code == 404
+
+
+def test_update_missing_table_returns_404(bq_client):
+    _setup_dataset(bq_client)
+    r = bq_client.patch(
+        f"{BASE}/datasets/myds/tables/ghost",
+        json={"description": "nope"},
+    )
+    assert r.status_code == 404
+
+
+def test_update_missing_view_returns_404(bq_client):
+    _setup_dataset(bq_client)
+    r = bq_client.put(
+        f"{BASE}/datasets/myds/tables/ghost",
+        json={"view": {"query": "SELECT 1"}, "description": "nope"},
+    )
+    assert r.status_code == 404

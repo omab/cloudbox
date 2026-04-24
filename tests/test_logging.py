@@ -958,3 +958,45 @@ def test_filter_combined_log_name_and_timestamp(logging_client):
     entries = r.json()["entries"]
     assert all(e["logName"] == log_c for e in entries)
     assert len(entries) >= 1
+
+
+def test_list_entries_ascending_order(logging_client):
+    """OrderBy timestamp asc returns oldest entries first."""
+    _write(
+        logging_client,
+        [
+            {"logName": LOG_NAME, "textPayload": "first"},
+            {"logName": LOG_NAME, "textPayload": "second"},
+            {"logName": LOG_NAME, "textPayload": "third"},
+        ],
+    )
+    body = {
+        "resourceNames": [f"projects/{PROJECT}"],
+        "orderBy": "timestamp asc",
+        "pageSize": 10,
+    }
+    r = logging_client.post("/v2/entries:list", json=body)
+    assert r.status_code == 200
+    entries = r.json()["entries"]
+    timestamps = [e["timestamp"] for e in entries]
+    assert timestamps == sorted(timestamps)
+
+
+def test_list_entries_default_descending_order(logging_client):
+    """Default orderBy is timestamp desc — newest first."""
+    _write(
+        logging_client,
+        [
+            {"logName": LOG_NAME, "textPayload": "a"},
+            {"logName": LOG_NAME, "textPayload": "b"},
+        ],
+    )
+    body = {
+        "resourceNames": [f"projects/{PROJECT}"],
+        "pageSize": 10,
+    }
+    r = logging_client.post("/v2/entries:list", json=body)
+    assert r.status_code == 200
+    entries = r.json()["entries"]
+    timestamps = [e["timestamp"] for e in entries]
+    assert timestamps == sorted(timestamps, reverse=True)
