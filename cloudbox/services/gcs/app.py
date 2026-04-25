@@ -7,8 +7,11 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
+import os
+import time
 import uuid
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import FastAPI, Header, Query, Request, Response
@@ -26,6 +29,110 @@ from cloudbox.services.gcs.models import (
     ObjectModel,
 )
 from cloudbox.services.gcs.store import get_store
+
+# ---------------------------------------------------------------------------
+# Signed URL support
+# ---------------------------------------------------------------------------
+
+# Stable per-process secret for HMAC-signed URLs. Fresh on each restart,
+# which is correct — signed URLs don't need to survive service restarts.
+_SIGN_SECRET: bytes = os.urandom(32)
+
+_SIGN_ALGO = "GOOG4-HMAC-SHA256"
+
+
+def _sign_token(method: str, bucket: str, obj: str, expires_at: int) -> str:
+    """Return a hex HMAC-SHA256 token for a signed URL.
+
+    Args:
+        method: HTTP method (GET, PUT, DELETE).
+        bucket: GCS bucket name.
+        obj: Object name.
+        expires_at: Unix timestamp (seconds) when the URL expires.
+
+    Returns:
+        Hex-encoded HMAC-SHA256 digest.
+    """
+    msg = f"{method}\n{bucket}\n{obj}\n{expires_at}".encode()
+    return hmac.new(_SIGN_SECRET, msg, hashlib.sha256).hexdigest()
+
+
+def _validate_signed_url(
+    method: str,
+    bucket: str,
+    obj: str,
+    algorithm: str | None,
+    date_str: str | None,
+    expires_str: str | None,
+    signature: str | None,
+) -> None:
+    """Raise GCPError(403) if the signed URL has expired or has an invalid signature.
+
+    For GOOG4-HMAC-SHA256 URLs (cloudbox-generated): validates both expiry and HMAC.
+    For GOOG4-RSA-SHA256 URLs (SDK-generated): validates expiry only — the private
+    key is not available to the emulator.
+
+    Args:
+        method: HTTP method being used (GET, PUT, DELETE).
+        bucket: GCS bucket name.
+        obj: Object name.
+        algorithm: X-Goog-Algorithm value from the URL.
+        date_str: X-Goog-Date value (YYYYMMDDTHHmmSSZ format).
+        expires_str: X-Goog-Expires value (seconds as string).
+        signature: X-Goog-Signature value from the URL.
+
+    Raises:
+        GCPError: 403 if the URL has expired, or 403 if the HMAC signature is invalid.
+    """
+    if not date_str or not expires_str:
+        raise GCPError(403, "Signed URL is missing required parameters.")
+
+    try:
+        # X-Goog-Date format: YYYYMMDDTHHMMSSZ
+        signed_at = datetime.strptime(date_str, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+        expires_s = int(expires_str)
+        expires_at = int(signed_at.timestamp()) + expires_s
+    except (ValueError, OverflowError) as exc:
+        raise GCPError(403, "Signed URL has invalid date or expiry.") from exc
+
+    if time.time() > expires_at:
+        raise GCPError(403, "Signed URL has expired.")
+
+    if algorithm == _SIGN_ALGO and signature is not None:
+        expected = _sign_token(method, bucket, obj, expires_at)
+        if not hmac.compare_digest(signature.lower(), expected.lower()):
+            raise GCPError(403, "Signed URL has invalid signature.")
+
+
+def _check_signed_url(method: str, bucket: str, obj: str, request: Request) -> bool:
+    """Return True and validate if the request carries signed URL query parameters.
+
+    Args:
+        method: HTTP method for the request.
+        bucket: GCS bucket name.
+        obj: Object name.
+        request: FastAPI Request.
+
+    Returns:
+        True if signed URL parameters are present (validated or accepted).
+
+    Raises:
+        GCPError: 403 if signature validation fails or the URL is expired.
+    """
+    params = request.query_params
+    algorithm = params.get("X-Goog-Algorithm")
+    if algorithm is None:
+        return False
+    _validate_signed_url(
+        method,
+        bucket,
+        obj,
+        algorithm,
+        params.get("X-Goog-Date"),
+        params.get("X-Goog-Expires"),
+        params.get("X-Goog-Signature"),
+    )
+    return True
 
 
 def _check_preconditions(
@@ -1558,3 +1665,185 @@ def _fire_notifications(store, bucket: str, event_type: str, obj_data: dict) -> 
                 sub_name = sub["name"]
                 ps_store.ensure_queue(sub_name)
                 ps_store.enqueue(sub_name, message)
+
+
+# ---------------------------------------------------------------------------
+# Signed URL generation endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.post("/_cloudbox/sign")
+async def generate_signed_url(request: Request):
+    """Generate an HMAC-backed signed URL for a GCS object.
+
+    This is a Cloudbox-specific endpoint; real GCS signs client-side using
+    service account credentials. Use this endpoint when ``AnonymousCredentials``
+    are in use (the usual emulator setup) and the application needs a signed URL.
+
+    Request body (JSON):
+
+    .. code-block:: json
+
+        {
+          "bucket":      "my-bucket",
+          "object":      "path/to/object.txt",
+          "method":      "GET",
+          "expiration":  3600,
+          "contentType": "application/octet-stream"
+        }
+
+    ``method`` defaults to ``"GET"``. ``expiration`` is seconds from now (default 3600).
+    ``contentType`` is optional and only used as a hint in the URL.
+
+    Args:
+        request (Request): HTTP request with the JSON body described above.
+
+    Returns:
+        dict: ``{"signedUrl": "<url>"}`` where the URL targets the XML API path.
+
+    Raises:
+        GCPError: 400 if bucket or object are missing.
+    """
+    body = await request.json()
+    bucket = body.get("bucket", "")
+    obj = body.get("object", "")
+    if not bucket or not obj:
+        raise GCPError(400, "bucket and object are required.")
+
+    method = (body.get("method") or "GET").upper()
+    expiration = int(body.get("expiration") or 3600)
+    expires_at = int(time.time()) + expiration
+    signed_at = datetime.fromtimestamp(time.time(), tz=UTC)
+    date_str = signed_at.strftime("%Y%m%dT%H%M%SZ")
+
+    signature = _sign_token(method, bucket, obj, expires_at)
+
+    base_url = str(request.base_url).rstrip("/")
+    import urllib.parse
+
+    params = urllib.parse.urlencode(
+        {
+            "X-Goog-Algorithm": _SIGN_ALGO,
+            "X-Goog-Date": date_str,
+            "X-Goog-Expires": str(expiration),
+            "X-Goog-SignedHeaders": "host",
+            "X-Goog-Signature": signature,
+        }
+    )
+    signed_url = f"{base_url}/{bucket}/{urllib.parse.quote(obj, safe='/')}?{params}"
+    return {"signedUrl": signed_url}
+
+
+# ---------------------------------------------------------------------------
+# XML API routes for signed URL delivery
+# These mirror the GCS XML API (/{bucket}/{object}) used by signed URLs.
+# They accept requests carrying X-Goog-Algorithm query parameters.
+# ---------------------------------------------------------------------------
+
+
+@app.get("/{bucket}/{object_name:path}")
+async def xml_download_object(
+    bucket: str,
+    object_name: str,
+    request: Request,
+    range: Annotated[str | None, Header(alias="range")] = None,
+):
+    """Download an object via the XML API (signed URL delivery).
+
+    Accepts requests with ``X-Goog-Algorithm`` query parameters (signed URLs).
+    Validates expiry and, for cloudbox-generated URLs, the HMAC signature.
+    Requests without signed URL parameters are rejected with 403.
+
+    Args:
+        bucket (str): GCS bucket name.
+        object_name (str): Object path.
+        request (Request): FastAPI request; signed URL params read from query string.
+        range (str | None): HTTP Range header for partial content.
+
+    Returns:
+        Response: 200 or 206 response with the object body.
+
+    Raises:
+        GCPError: 403 if not a signed URL request or validation fails, 404 if not found.
+    """
+    if not _check_signed_url("GET", bucket, object_name, request):
+        raise GCPError(403, "Access denied. Use a signed URL to access this object.")
+
+    store = _store()
+    key = f"{bucket}/{object_name}"
+    data = store.get("objects", key)
+    if data is None:
+        raise GCPError(404, f"No such object: {bucket}/{object_name}")
+    body = store.get("bodies", key) or b""
+    ct = data.get("contentType", "application/octet-stream")
+    return _range_response(body, ct, range)
+
+
+@app.put("/{bucket}/{object_name:path}")
+async def xml_upload_object(
+    bucket: str,
+    object_name: str,
+    request: Request,
+    content_type: Annotated[str | None, Header(alias="content-type")] = None,
+):
+    """Upload an object via the XML API (signed URL delivery).
+
+    Accepts PUT requests with ``X-Goog-Algorithm`` query parameters.
+    Validates expiry and, for cloudbox-generated URLs, the HMAC signature.
+
+    Args:
+        bucket (str): GCS bucket name.
+        object_name (str): Object path.
+        request (Request): FastAPI request; body is the raw object bytes.
+        content_type (str | None): MIME type from the Content-Type header.
+
+    Returns:
+        dict: Object metadata dict for the uploaded object.
+
+    Raises:
+        GCPError: 403 if not a signed URL request or validation fails, 404 if bucket missing.
+    """
+    if not _check_signed_url("PUT", bucket, object_name, request):
+        raise GCPError(403, "Access denied. Use a signed URL to upload this object.")
+
+    store = _store()
+    if not store.exists("buckets", bucket):
+        raise GCPError(404, "The specified bucket does not exist.")
+    body = await request.body()
+    ct = content_type or "application/octet-stream"
+    return _store_object(store, bucket, object_name, body, ct)
+
+
+@app.delete("/{bucket}/{object_name:path}")
+async def xml_delete_object(
+    bucket: str,
+    object_name: str,
+    request: Request,
+):
+    """Delete an object via the XML API (signed URL delivery).
+
+    Accepts DELETE requests with ``X-Goog-Algorithm`` query parameters.
+
+    Args:
+        bucket (str): GCS bucket name.
+        object_name (str): Object path.
+        request (Request): FastAPI request; signed URL params read from query string.
+
+    Returns:
+        Response: 204 response on success.
+
+    Raises:
+        GCPError: 403 if not a signed URL request or validation fails, 404 if not found.
+    """
+    if not _check_signed_url("DELETE", bucket, object_name, request):
+        raise GCPError(403, "Access denied. Use a signed URL to delete this object.")
+
+    store = _store()
+    key = f"{bucket}/{object_name}"
+    obj_data = store.get("objects", key)
+    if obj_data is None:
+        raise GCPError(404, f"No such object: {bucket}/{object_name}")
+    store.delete("objects", key)
+    store.delete("bodies", key)
+    _fire_notifications(store, bucket, "OBJECT_DELETE", obj_data)
+    return Response(status_code=204)

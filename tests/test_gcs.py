@@ -1260,3 +1260,134 @@ def test_set_retention_missing_bucket_returns_404(gcs_client):
 def test_delete_retention_missing_bucket_returns_404(gcs_client):
     r = gcs_client.delete("/storage/v1/b/no-such-bucket/retentionPolicy")
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Signed URL tests
+# ---------------------------------------------------------------------------
+
+
+def _setup_signed_url_object(gcs_client, bucket="sign-bucket", obj="sign-obj.txt", body=b"signed!"):
+    gcs_client.post("/storage/v1/b", json={"name": bucket})
+    gcs_client.post(
+        f"/upload/storage/v1/b/{bucket}/o?uploadType=media&name={obj}",
+        content=body,
+        headers={"content-type": "text/plain"},
+    )
+    return bucket, obj, body
+
+
+def _get_signed_url(gcs_client, bucket, obj, method="GET", expiration=3600):
+    r = gcs_client.post(
+        "/_cloudbox/sign",
+        json={"bucket": bucket, "object": obj, "method": method, "expiration": expiration},
+    )
+    assert r.status_code == 200
+    return r.json()["signedUrl"]
+
+
+def test_signed_url_download(gcs_client):
+    bucket, obj, body = _setup_signed_url_object(gcs_client)
+    signed_url = _get_signed_url(gcs_client, bucket, obj)
+
+    # Extract path + query from the signed URL
+    from urllib.parse import urlparse
+
+    parsed = urlparse(signed_url)
+    r = gcs_client.get(parsed.path + "?" + parsed.query)
+    assert r.status_code == 200
+    assert r.content == body
+
+
+def test_signed_url_upload(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "upload-sign-bucket"})
+    signed_url = _get_signed_url(gcs_client, "upload-sign-bucket", "new-obj.txt", method="PUT")
+
+    from urllib.parse import urlparse
+
+    parsed = urlparse(signed_url)
+    r = gcs_client.put(
+        parsed.path + "?" + parsed.query,
+        content=b"uploaded via signed url",
+        headers={"content-type": "application/octet-stream"},
+    )
+    assert r.status_code == 200
+    # Verify the object is now accessible via normal API
+    meta = gcs_client.get("/storage/v1/b/upload-sign-bucket/o/new-obj.txt")
+    assert meta.status_code == 200
+
+
+def test_signed_url_delete(gcs_client):
+    bucket, obj, _ = _setup_signed_url_object(gcs_client, "del-sign-bucket", "del-obj.txt")
+    signed_url = _get_signed_url(gcs_client, bucket, obj, method="DELETE")
+
+    from urllib.parse import urlparse
+
+    parsed = urlparse(signed_url)
+    r = gcs_client.delete(parsed.path + "?" + parsed.query)
+    assert r.status_code == 204
+    # Object should be gone
+    assert gcs_client.get("/storage/v1/b/del-sign-bucket/o/del-obj.txt").status_code == 404
+
+
+def test_signed_url_expired(gcs_client):
+    bucket, obj, _ = _setup_signed_url_object(gcs_client, "exp-sign-bucket", "exp-obj.txt")
+    # Generate URL that expires instantly (0 seconds means it's already expired)
+    signed_url = _get_signed_url(gcs_client, bucket, obj, expiration=-1)
+
+    from urllib.parse import urlparse
+
+    parsed = urlparse(signed_url)
+    r = gcs_client.get(parsed.path + "?" + parsed.query)
+    assert r.status_code == 403
+
+
+def test_signed_url_missing_params_returns_403(gcs_client):
+    bucket, obj, _ = _setup_signed_url_object(gcs_client, "noparam-bucket", "noparam.txt")
+    # Access without any signed URL params
+    r = gcs_client.get(f"/{bucket}/{obj}")
+    assert r.status_code == 403
+
+
+def test_signed_url_invalid_signature(gcs_client):
+    bucket, obj, _ = _setup_signed_url_object(gcs_client, "badsig-bucket", "badsig.txt")
+    signed_url = _get_signed_url(gcs_client, bucket, obj)
+
+    # Tamper with the signature
+    from urllib.parse import parse_qs, urlencode, urlparse
+
+    parsed = urlparse(signed_url)
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    params["X-Goog-Signature"] = ["deadbeef" * 8]
+    r = gcs_client.get(parsed.path + "?" + urlencode(params, doseq=True))
+    assert r.status_code == 403
+
+
+def test_signed_url_generate_missing_fields_returns_400(gcs_client):
+    r = gcs_client.post("/_cloudbox/sign", json={"bucket": "only-bucket"})
+    assert r.status_code == 400
+
+
+def test_signed_url_object_not_found(gcs_client):
+    gcs_client.post("/storage/v1/b", json={"name": "notfound-sign-bucket"})
+    signed_url = _get_signed_url(gcs_client, "notfound-sign-bucket", "nonexistent.txt")
+
+    from urllib.parse import urlparse
+
+    parsed = urlparse(signed_url)
+    r = gcs_client.get(parsed.path + "?" + parsed.query)
+    assert r.status_code == 404
+
+
+def test_signed_url_upload_missing_bucket(gcs_client):
+    signed_url = _get_signed_url(gcs_client, "no-such-bucket", "obj.txt", method="PUT")
+
+    from urllib.parse import urlparse
+
+    parsed = urlparse(signed_url)
+    r = gcs_client.put(
+        parsed.path + "?" + parsed.query,
+        content=b"data",
+        headers={"content-type": "application/octet-stream"},
+    )
+    assert r.status_code == 404
