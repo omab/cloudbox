@@ -1135,3 +1135,141 @@ def test_update_missing_view_returns_404(bq_client):
         json={"view": {"query": "SELECT 1"}, "description": "nope"},
     )
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# MERGE statement tests
+# ---------------------------------------------------------------------------
+
+
+def _setup_merge_table(bq_client, ds="merge_ds", tbl="target"):
+    """Create a dataset and a simple int/string table for MERGE tests."""
+    bq_client.post(
+        f"{BASE}/datasets",
+        json={"datasetReference": {"projectId": PROJECT, "datasetId": ds}},
+    )
+    bq_client.post(
+        f"{BASE}/datasets/{ds}/tables",
+        json={
+            "tableReference": {"projectId": PROJECT, "datasetId": ds, "tableId": tbl},
+            "schema": {
+                "fields": [
+                    {"name": "id", "type": "INTEGER", "mode": "REQUIRED"},
+                    {"name": "val", "type": "STRING", "mode": "NULLABLE"},
+                ]
+            },
+        },
+    )
+    # Seed initial rows
+    bq_client.post(
+        f"{BASE}/jobs",
+        json={
+            "configuration": {
+                "query": {
+                    "query": f"INSERT INTO \"{ds}\".\"{tbl}\" VALUES (1, 'a'), (2, 'b')",
+                    "useLegacySql": False,
+                }
+            }
+        },
+    )
+
+
+def _run_merge(bq_client, sql):
+    r = bq_client.post(
+        f"{BASE}/jobs",
+        json={"configuration": {"query": {"query": sql, "useLegacySql": False}}},
+    )
+    assert r.status_code == 200
+    return r.json()
+
+
+def _read_all(bq_client, ds, tbl):
+    r = bq_client.post(
+        f"{BASE}/jobs",
+        json={
+            "configuration": {
+                "query": {
+                    "query": f'SELECT id, val FROM "{ds}"."{tbl}" ORDER BY id',
+                    "useLegacySql": False,
+                }
+            }
+        },
+    )
+    job_id = r.json()["jobReference"]["jobId"]
+    result = bq_client.get(f"{BASE}/queries/{job_id}")
+    rows = result.json()["rows"]
+    return [(int(row["f"][0]["v"]), row["f"][1]["v"]) for row in rows]
+
+
+def test_merge_update_matched(bq_client):
+    _setup_merge_table(bq_client)
+    sql = """
+    MERGE merge_ds.target AS t
+    USING (SELECT 1 AS id, 'x' AS val) AS src
+    ON t.id = src.id
+    WHEN MATCHED THEN UPDATE SET val = src.val
+    """
+    job = _run_merge(bq_client, sql)
+    assert job["status"]["errorResult"] is None
+    rows = _read_all(bq_client, "merge_ds", "target")
+    assert (1, "x") in rows
+    assert (2, "b") in rows
+
+
+def test_merge_insert_not_matched(bq_client):
+    _setup_merge_table(bq_client, ds="merge_insert_ds")
+    sql = """
+    MERGE merge_insert_ds.target AS t
+    USING (SELECT 99 AS id, 'new' AS val) AS src
+    ON t.id = src.id
+    WHEN MATCHED THEN UPDATE SET val = src.val
+    WHEN NOT MATCHED THEN INSERT (id, val) VALUES (src.id, src.val)
+    """
+    _run_merge(bq_client, sql)
+    rows = _read_all(bq_client, "merge_insert_ds", "target")
+    assert (99, "new") in rows
+
+
+def test_merge_delete_by_source(bq_client):
+    _setup_merge_table(bq_client, ds="merge_del_ds")
+    # Only id=2 is in source, so id=1 should be deleted by NOT MATCHED BY SOURCE
+    sql = """
+    MERGE merge_del_ds.target AS t
+    USING (SELECT 2 AS id, 'b' AS val) AS src
+    ON t.id = src.id
+    WHEN MATCHED THEN UPDATE SET val = src.val
+    WHEN NOT MATCHED BY SOURCE THEN DELETE
+    """
+    _run_merge(bq_client, sql)
+    rows = _read_all(bq_client, "merge_del_ds", "target")
+    assert len(rows) == 1
+    assert rows[0][0] == 2
+
+
+def test_merge_with_backtick_identifiers(bq_client):
+    """MERGE with BigQuery-style backtick identifiers should be rewritten correctly."""
+    _setup_merge_table(bq_client, ds="bq_merge_ds")
+    sql = """
+    MERGE `local-project.bq_merge_ds.target` AS t
+    USING (SELECT 1 AS id, 'updated' AS val) AS src
+    ON t.id = src.id
+    WHEN MATCHED THEN UPDATE SET val = src.val
+    WHEN NOT MATCHED THEN INSERT (id, val) VALUES (src.id, src.val)
+    """
+    job = _run_merge(bq_client, sql)
+    assert job["status"]["errorResult"] is None
+    rows = _read_all(bq_client, "bq_merge_ds", "target")
+    assert (1, "updated") in rows
+
+
+def test_merge_reports_dml_affected_rows(bq_client):
+    _setup_merge_table(bq_client, ds="merge_count_ds")
+    sql = """
+    MERGE merge_count_ds.target AS t
+    USING (SELECT 1 AS id, 'updated' AS val) AS src
+    ON t.id = src.id
+    WHEN MATCHED THEN UPDATE SET val = src.val
+    """
+    job = _run_merge(bq_client, sql)
+    stats = job["statistics"].get("query", {})
+    assert int(stats.get("numDmlAffectedRows", 0)) >= 1

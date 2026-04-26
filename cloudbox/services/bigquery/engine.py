@@ -319,11 +319,34 @@ def _rewrite_information_schema(sql: str) -> str:
     return sql
 
 
+def _rewrite_merge(sql: str) -> str:
+    """Rewrite BigQuery MERGE syntax to DuckDB-compatible MERGE INTO syntax.
+
+    BigQuery uses ``MERGE <target> USING ...`` (no ``INTO``). DuckDB requires
+    ``MERGE INTO <target> USING ...``. This function inserts ``INTO`` when absent.
+
+    Args:
+        sql (str): SQL statement, possibly a BigQuery MERGE statement.
+
+    Returns:
+        str: SQL with ``MERGE INTO`` instead of bare ``MERGE``, unchanged for
+            all other statement types.
+    """
+    return re.sub(
+        r"(?i)^\s*MERGE\s+(?!INTO\b)",
+        lambda m: m.group(0).rstrip() + " INTO ",
+        sql,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+
 def _rewrite_sql(sql: str, project: str) -> str:
     """Rewrite BigQuery SQL identifiers to DuckDB-compatible form.
 
     Conversions applied in order:
 
+    - ``MERGE <target>`` → ``MERGE INTO <target>`` (BigQuery omits ``INTO``)
     - ``INFORMATION_SCHEMA.*`` → ``information_schema.*``
     - project.dataset.table (backtick-quoted) → ``"dataset"."table"``
     - dataset.table (backtick-quoted) → ``"dataset"."table"``
@@ -338,6 +361,8 @@ def _rewrite_sql(sql: str, project: str) -> str:
     Returns:
         str: SQL rewritten with DuckDB double-quoted identifiers.
     """
+    # BigQuery MERGE does not require INTO; DuckDB does.
+    sql = _rewrite_merge(sql)
     # Rewrite INFORMATION_SCHEMA references before identifier quoting
     sql = _rewrite_information_schema(sql)
     # 3-part backtick: `project.dataset.table`
